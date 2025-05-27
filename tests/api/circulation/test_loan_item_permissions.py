@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# Copyright (C) 2018-2020 CERN.
+# Copyright (C) 2018-2025 CERN.
 #
 # invenio-app-ils is free software; you can redistribute it and/or modify it
 # under the terms of the MIT License; see LICENSE file for more details.
@@ -53,7 +53,7 @@ def test_anonymous_cannot_get_any_loan(client, json_headers, testdata):
 
 def test_admin_or_librarian_can_get_any_loan(client, json_headers, users, testdata):
     """Test that admins and librarians can get any loan."""
-    for username in ["admin", "librarian"]:
+    for username in ["admin", "librarian", "librarian_readonly"]:
         user_login(client, username, users)
         # GET loans of Patron 1
         loan_patron1 = testdata["loans"][0]

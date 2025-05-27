@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# Copyright (C) 2020 CERN.
+# Copyright (C) 2020-2025 CERN.
 #
 # invenio-app-ils is free software; you can redistribute it and/or modify it
 # under the terms of the MIT License; see LICENSE file for more details.
@@ -24,6 +24,7 @@ def test_series_read_permissions(client, testdata, json_headers, users):
     tests = [
         ("admin", _HTTP_OK),
         ("librarian", _HTTP_OK),
+        ("librarian_readonly", _HTTP_OK),
         ("patron1", _HTTP_OK),
         ("anonymous", _HTTP_OK),
     ]
@@ -56,6 +57,7 @@ def test_series_edit_permissions(client, testdata, json_headers, users):
     tests = [
         ("admin", _HTTP_OK, dummy_series),
         ("librarian", _HTTP_OK, dummy_series),
+        ("librarian_readonly", [403], dummy_series),
         ("patron1", [403], dummy_series),
         ("anonymous", [401], dummy_series),
     ]

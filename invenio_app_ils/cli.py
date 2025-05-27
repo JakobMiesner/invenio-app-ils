@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# Copyright (C) 2018-2020 CERN.
+# Copyright (C) 2018-2025 CERN.
 #
 # invenio-app-ils is free software; you can redistribute it and/or modify it
 # under the terms of the MIT License; see LICENSE file for more details.
@@ -1306,6 +1306,7 @@ def data(
     # Create roles to restrict access
     _run_command("roles create admin", verbose)
     _run_command("roles create librarian", verbose)
+    _run_command("roles create librarian_readonly", verbose)
 
     # Create users
     _run_command("users create patron1@test.ch -a --password=123456", verbose)  # ID 1
@@ -1319,14 +1320,21 @@ def data(
     create_userprofile_for("patron3@test.ch", "patron3", "Medrod Tara")
     _run_command("users create patron4@test.ch -a --password=123456", verbose)  # ID 5
     create_userprofile_for("patron4@test.ch", "patron4", "Devi Cupid")
+    _run_command(
+        "users create librarian_readonly@test.ch -a --password=123456", verbose
+    )  # ID 6
+    create_userprofile_for(
+        "librarian_readonly@test.ch", "librarian_readonly", "Talek Voro"
+    )
 
     if not skip_admin:
-        _run_command("users create admin@test.ch -a --password=123456", verbose)  # ID 6
+        _run_command("users create admin@test.ch -a --password=123456", verbose)  # ID 7
         create_userprofile_for("admin@test.ch", "admin", "Zeki Ryoichi")
         _run_command("roles add admin@test.ch admin", verbose)
 
     # assign roles
     _run_command("roles add librarian@test.ch librarian", verbose)
+    _run_command("roles add librarian_readonly@test.ch librarian_readonly", verbose)
 
     # Index vocabularies
     vocabularies_dir = os.path.join(CURRENT_DIR, "vocabularies", "data")
@@ -1344,7 +1352,10 @@ def data(
 
     # Assign actions
     _run_command("access allow superuser-access role admin", verbose)
-    _run_command("access allow ils-backoffice-access role librarian", verbose)
+    _run_command("access allow ils-backoffice-access role librariann", verbose)
+    _run_command(
+        "access allow ils-backoffice-readonly-access role librarian_readonly", verbose
+    )
 
     # Create demo locations
     click.echo("Creating locations and internal locations...")

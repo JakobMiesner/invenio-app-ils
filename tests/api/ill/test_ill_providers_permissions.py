@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# Copyright (C) 2020 CERN.
+# Copyright (C) 2020-2025 CERN.
 #
 # invenio-app-ils is free software; you can redistribute it and/or modify it
 # under the terms of the MIT License; see LICENSE file for more details.
@@ -11,7 +11,7 @@ import json
 
 from flask import url_for
 
-from tests.helpers import user_login
+from tests.helpers import CRUDStatus, user_login
 
 _HTTP_OK = [200, 201, 204]
 PROVIDER_PID = "ill-provid-1"
@@ -25,10 +25,23 @@ def test_ill_providers_permissions(client, testdata, json_headers, users):
     """Test providers endpoints permissions."""
     dummy_provider = dict(name=PROVIDER_NAME, type=PROVIDER_TYPE)
     tests = [
-        ("admin", _HTTP_OK, dummy_provider),
-        ("librarian", _HTTP_OK, dummy_provider),
-        ("patron1", [403], dummy_provider),
-        ("anonymous", [401], dummy_provider),
+        ("admin", CRUDStatus(_HTTP_OK), dummy_provider),
+        ("librarian", CRUDStatus(_HTTP_OK), dummy_provider),
+        (
+            "librarian_readonly",
+            CRUDStatus(
+                specific_status={
+                    "list": _HTTP_OK,
+                    "create": [403],
+                    "read": _HTTP_OK,
+                    "update": [403],
+                    "delete": [403],
+                },
+            ),
+            dummy_provider,
+        ),
+        ("patron1", CRUDStatus([403]), dummy_provider),
+        ("anonymous", CRUDStatus([401]), dummy_provider),
     ]
 
     def _test_list(expected_status):
@@ -75,8 +88,8 @@ def test_ill_providers_permissions(client, testdata, json_headers, users):
 
     for username, expected_status, data in tests:
         user_login(client, username, users)
-        _test_list(expected_status)
-        pid = _test_create(expected_status, data)
-        _test_update(expected_status, data, pid)
-        _test_read(expected_status, pid)
-        _test_delete(expected_status, pid)
+        _test_list(expected_status.list)
+        pid = _test_create(expected_status.create, data)
+        _test_update(expected_status.update, data, pid)
+        _test_read(expected_status.read, pid)
+        _test_delete(expected_status.delete, pid)

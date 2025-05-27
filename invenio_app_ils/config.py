@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# Copyright (C) 2018-2020 CERN.
+# Copyright (C) 2018-2025 CERN.
 #
 # invenio-app-ils is free software; you can redistribute it and/or modify it
 # under the terms of the MIT License; see LICENSE file for more details.
@@ -94,6 +94,7 @@ from .permissions import (
     PatronOwnerPermission,
     authenticated_user_permission,
     backoffice_permission,
+    backoffice_or_backoffice_readonly_permission,
     views_permissions_factory,
 )
 from .records.permissions import record_read_permission_factory
@@ -395,8 +396,8 @@ RECORDS_REST_ENDPOINTS = dict(
         default_media_type="application/json",
         max_result_window=RECORDS_REST_MAX_RESULT_WINDOW,
         error_handlers=dict(),
-        read_permission_factory_imp=backoffice_permission,
-        list_permission_factory_imp=backoffice_permission,
+        read_permission_factory_imp=backoffice_or_backoffice_readonly_permission,
+        list_permission_factory_imp=backoffice_or_backoffice_readonly_permission,
         create_permission_factory_imp=backoffice_permission,
         update_permission_factory_imp=backoffice_permission,
         delete_permission_factory_imp=backoffice_permission,
@@ -427,8 +428,8 @@ RECORDS_REST_ENDPOINTS = dict(
         default_media_type="application/json",
         max_result_window=RECORDS_REST_MAX_RESULT_WINDOW,
         error_handlers=dict(),
-        read_permission_factory_imp=backoffice_permission,
-        list_permission_factory_imp=backoffice_permission,
+        read_permission_factory_imp=backoffice_or_backoffice_readonly_permission,
+        list_permission_factory_imp=backoffice_or_backoffice_readonly_permission,
         create_permission_factory_imp=backoffice_permission,
         update_permission_factory_imp=backoffice_permission,
         delete_permission_factory_imp=backoffice_permission,
@@ -522,8 +523,8 @@ RECORDS_REST_ENDPOINTS = dict(
         default_media_type="application/json",
         max_result_window=RECORDS_REST_MAX_RESULT_WINDOW,
         error_handlers=dict(),
-        read_permission_factory_imp=backoffice_permission,
-        list_permission_factory_imp=backoffice_permission,
+        read_permission_factory_imp=backoffice_or_backoffice_readonly_permission,
+        list_permission_factory_imp=backoffice_or_backoffice_readonly_permission,
         create_permission_factory_imp=backoffice_permission,
         update_permission_factory_imp=backoffice_permission,
         delete_permission_factory_imp=backoffice_permission,
@@ -552,7 +553,7 @@ RECORDS_REST_ENDPOINTS = dict(
         max_result_window=RECORDS_REST_MAX_RESULT_WINDOW,
         error_handlers=dict(),
         read_permission_factory_imp=deny_all,
-        list_permission_factory_imp=backoffice_permission,
+        list_permission_factory_imp=backoffice_or_backoffice_readonly_permission,
         create_permission_factory_imp=deny_all,
         update_permission_factory_imp=deny_all,
         delete_permission_factory_imp=deny_all,
