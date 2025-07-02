@@ -1,4 +1,4 @@
-# Copyright (C) 2021 CERN.
+# Copyright (C) 2021-2025 CERN.
 #
 # invenio-app-ils is free software; you can redistribute it and/or modify it
 # under the terms of the MIT License; see LICENSE file for more details.
@@ -23,6 +23,7 @@ def test_notifications_read_permissions(client, json_headers, users):
     list_tests = [
         ("admin", _HTTP_OK),
         ("librarian", _HTTP_OK),
+        ("librarian_readonly", _HTTP_OK),
         ("patron1", _HTTP_FORBIDDEN),
         ("anonymous", _HTTP_UNAUTHORIZED),
     ]
@@ -30,6 +31,7 @@ def test_notifications_read_permissions(client, json_headers, users):
     item_tests = [
         ("admin", _HTTP_NOT_FOUND),
         ("librarian", _HTTP_NOT_FOUND),
+        ("librarian_readonly", _HTTP_NOT_FOUND),
         ("patron1", _HTTP_FORBIDDEN),
         ("anonymous", _HTTP_UNAUTHORIZED),
     ]

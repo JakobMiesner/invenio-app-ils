@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# Copyright (C) 2018 CERN.
+# Copyright (C) 2018-2025 CERN.
 #
 # invenio-app-ils is free software; you can redistribute it and/or modify it
 # under the terms of the MIT License; see LICENSE file for more details.
@@ -26,6 +26,17 @@ def test_items_permissions(client, testdata, item_record, json_headers, users):
     tests = [
         ("admin", _HTTP_OK, dummy_item),
         ("librarian", _HTTP_OK, dummy_item),
+        (
+            "librarian_readonly",
+            {
+                "list": _HTTP_OK,
+                "create": [403],
+                "update": [403],
+                "read": _HTTP_OK,
+                "delete": [403],
+            },
+            dummy_item,
+        ),
         ("patron1", [403], dummy_item),
         ("anonymous", [401], dummy_item),
     ]
@@ -69,13 +80,27 @@ def test_items_permissions(client, testdata, item_record, json_headers, users):
         res = client.delete(url, headers=json_headers)
         assert res.status_code in expected_status
 
-    for username, expected_status, data in tests:
+    for username, expected_permissions_config, data_payload in tests:
         user_login(client, username, users)
-        _test_list(expected_status)
-        pid = _test_create(expected_status, data)
-        _test_update(expected_status, data, pid)
-        _test_read(expected_status, pid)
-        _test_delete(expected_status, pid)
+
+        if isinstance(expected_permissions_config, dict):
+            # Handle role with specific permissions per operation
+            _test_list(expected_permissions_config["list"])
+            created_pid = _test_create(
+                expected_permissions_config["create"], data_payload
+            )
+            _test_update(
+                expected_permissions_config["update"], data_payload, created_pid
+            )
+            _test_read(expected_permissions_config["read"], created_pid)
+            _test_delete(expected_permissions_config["delete"], created_pid)
+        else:
+            # Handle roles with uniform permissions across all operations
+            _test_list(expected_permissions_config)
+            created_pid = _test_create(expected_permissions_config, data_payload)
+            _test_update(expected_permissions_config, data_payload, created_pid)
+            _test_read(expected_permissions_config, created_pid)
+            _test_delete(expected_permissions_config, created_pid)
 
 
 def test_item_circulation(client, json_headers, testdata, users):
@@ -87,6 +112,7 @@ def test_item_circulation(client, json_headers, testdata, users):
         ("patron1", "itemid-57", 403, True),
         ("patron2", "itemid-57", 403, False),
         ("librarian", "itemid-56", 200, False),
+        ("librarian_readonly", "itemid-57", 200, False),
         ("admin", "itemid-57", 200, False),
     ]
 

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# Copyright (C) 2019-2021 CERN.
+# Copyright (C) 2019-2025 CERN.
 #
 # invenio-app-ils is free software; you can redistribute it and/or modify it
 # under the terms of the MIT License; see LICENSE file for more details.
@@ -10,7 +10,7 @@
 from invenio_records_rest.facets import terms_filter
 
 from invenio_app_ils.config import RECORDS_REST_MAX_RESULT_WINDOW
-from invenio_app_ils.permissions import backoffice_permission
+from invenio_app_ils.permissions import backoffice_or_backoffice_readonly_permission, backoffice_permission
 
 from .api import PROVIDER_PID_FETCHER, PROVIDER_PID_MINTER, PROVIDER_PID_TYPE, Provider
 from .indexer import ProviderIndexer
@@ -47,8 +47,8 @@ RECORDS_REST_ENDPOINTS = dict(
         default_media_type="application/json",
         max_result_window=RECORDS_REST_MAX_RESULT_WINDOW,
         error_handlers=dict(),
-        read_permission_factory_imp=backoffice_permission,
-        list_permission_factory_imp=backoffice_permission,
+        read_permission_factory_imp=backoffice_or_backoffice_readonly_permission,
+        list_permission_factory_imp=backoffice_or_backoffice_readonly_permission,
         create_permission_factory_imp=backoffice_permission,
         update_permission_factory_imp=backoffice_permission,
         delete_permission_factory_imp=backoffice_permission,

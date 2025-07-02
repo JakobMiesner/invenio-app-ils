@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# Copyright (C) 2018 CERN.
+# Copyright (C) 2018-2025 CERN.
 #
 # invenio-app-ils is free software; you can redistribute it and/or modify it
 # under the terms of the MIT License; see LICENSE file for more details.
@@ -12,7 +12,10 @@ from flask_principal import ActionNeed, RoleNeed, UserNeed
 from invenio_access import Permission, any_user
 from six import string_types
 
-from invenio_app_ils.permissions import backoffice_access_action
+from invenio_app_ils.permissions import (
+    backoffice_access_action,
+    backoffice_readonly_access_action,
+)
 
 create_records_action = ActionNeed("create-records")
 
@@ -68,7 +71,10 @@ class RecordPermission(Permission):
         if self.is_public():
             return [any_user]
         else:
-            return self.record_needs() + [backoffice_access_action]
+            return self.record_needs() + [
+                backoffice_access_action,
+                backoffice_readonly_access_action,
+            ]
 
     def record_explicit_restrictions(self):
         """Return the list of user ids/roles allowed for the given action."""

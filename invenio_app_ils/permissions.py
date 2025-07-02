@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# Copyright (C) 2018-2020 CERN.
+# Copyright (C) 2018-2025 CERN.
 #
 # invenio-app-ils is free software; you can redistribute it and/or modify it
 # under the terms of the MIT License; see LICENSE file for more details.
@@ -20,6 +20,7 @@ from invenio_app_ils.errors import InvalidLoanExtendError, LoanCheckoutByPatronF
 from invenio_app_ils.proxies import current_app_ils
 
 backoffice_access_action = action_factory("ils-backoffice-access")
+backoffice_readonly_access_action = action_factory("ils-backoffice-readonly-access")
 
 
 def need_permissions(action):
@@ -60,6 +61,11 @@ def authenticated_user_permission(*args, **kwargs):
 def backoffice_permission(*args, **kwargs):
     """Return permission to allow only librarians and admins."""
     return Permission(backoffice_access_action)
+
+
+def backoffice_or_backoffice_readonly_permission(*args, **kwargs):
+    """Return permission to allow only librarians and admins."""
+    return Permission(backoffice_access_action, backoffice_readonly_access_action)
 
 
 def superuser_permission(*args, **kwargs):

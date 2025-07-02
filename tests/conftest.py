@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# Copyright (C) 2020 CERN.
+# Copyright (C) 2020-2025 CERN.
 #
 # invenio-app-ils is free software; you can redistribute it and/or modify it
 # under the terms of the MIT License; see LICENSE file for more details.
@@ -23,7 +23,10 @@ from invenio_accounts.models import Role
 from invenio_app.factory import create_app as _create_app
 from invenio_userprofiles import UserProfile
 
-from invenio_app_ils.permissions import backoffice_access_action
+from invenio_app_ils.permissions import (
+    backoffice_access_action,
+    backoffice_readonly_access_action,
+)
 
 
 #
@@ -83,6 +86,9 @@ def users(app, db):
         librarian2 = datastore.create_user(
             email="librarian2@test.com", password="123456", active=True
         )
+        librarian_readonly = datastore.create_user(
+            email="librarian_readonly@test.com", password="123456", active=True
+        )
         admin = datastore.create_user(
             email="admin@test.com", password="123456", active=True
         )
@@ -101,12 +107,24 @@ def users(app, db):
             ActionRoles(action=backoffice_access_action.value, role=librarian_role)
         )
         datastore.add_role_to_user(librarian2, librarian_role)
+
+        # Give role to librarian_readonly
+        librarian_readonly_role = Role(name="librarian_readonly")
+        db.session.add(
+            ActionRoles(
+                action=backoffice_readonly_access_action.value,
+                role=librarian_readonly_role,
+            )
+        )
+        datastore.add_role_to_user(librarian_readonly, librarian_readonly_role)
+
     db.session.commit()
 
     for patron, name in [
         (admin, "Admin User"),
         (librarian, "Librarian One"),
         (librarian2, "Librarian Two"),
+        (librarian_readonly, "Librarian Readonly"),
         (patron1, "Patron One"),
         (patron2, "Patron Two"),
         (patron3, "Patron Three"),
@@ -124,6 +142,7 @@ def users(app, db):
     return {
         "admin": admin,
         "librarian": librarian,
+        "librarian_readonly": librarian_readonly,
         "librarian2": librarian2,
         "patron1": patron1,
         "patron2": patron2,

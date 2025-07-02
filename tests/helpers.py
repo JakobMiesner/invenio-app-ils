@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# Copyright (C) 2018-2020 CERN.
+# Copyright (C) 2018-2025 CERN.
 #
 # invenio-app-ils is free software; you can redistribute it and/or modify it
 # under the terms of the MIT License; see LICENSE file for more details.
@@ -105,3 +105,9 @@ def validate_response(client, req_method, url, headers, data, expected_resp_code
 def get_test_record(testdata, type, pid_value):
     """Fetch and return the record from the test data."""
     return [rec for rec in testdata[type] if rec["pid"] == pid_value][0]
+
+
+class CRUDStatus:
+    def __init__(self, base_status=[], specific_status={}):
+        for action in ["list", "create", "read", "update", "delete"]:
+            setattr(self, action, specific_status.get(action, base_status))

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# Copyright (C) 2018-2019 CERN.
+# Copyright (C) 2018-2025 CERN.
 #
 # invenio-app-ils is free software; you can redistribute it and/or modify it
 # under the terms of the MIT License; see LICENSE file for more details.
@@ -90,6 +90,8 @@ def test_record_generic_access(client, db, users, with_access):
         login_and_test("patron1")
         # Test librarian access
         login_and_test("librarian")
+        # Test librarian_readonly access
+        login_and_test("librarian_readonly")
         # Test superuser access
         login_and_test("admin")
 

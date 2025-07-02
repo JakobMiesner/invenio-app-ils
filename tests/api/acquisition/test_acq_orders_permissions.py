@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# Copyright (C) 2020 CERN.
+# Copyright (C) 2020-2025 CERN.
 #
 # invenio-app-ils is free software; you can redistribute it and/or modify it
 # under the terms of the MIT License; see LICENSE file for more details.
@@ -11,7 +11,7 @@ import json
 
 from flask import url_for
 
-from tests.helpers import user_login
+from tests.helpers import CRUDStatus, user_login
 
 _HTTP_OK = [200, 201, 204]
 ORDER_PID = "acqoid-1"
@@ -74,31 +74,48 @@ def test_acq_orders_permissions(client, testdata, json_headers, users):
         res = client.get(url, headers=json_headers)
         assert res.status_code in expected_status
 
-    def _test_delete(expected_status, pid):
+    def _test_delete(expected_status, pid, uname):
         """Test record delete."""
         url = url_for(ITEM_ENDPOINT, pid_value=pid)
         res = client.delete(url, headers=json_headers)
         assert res.status_code in expected_status
 
     tests = [
-        ("admin", _HTTP_OK, dummy_acquisition_order),
-        ("librarian", _HTTP_OK, dummy_acquisition_order),
-        ("patron1", [403], dummy_acquisition_order),
-        ("anonymous", [401], dummy_acquisition_order),
+        (
+            "librarian",
+            CRUDStatus(
+                specific_status={
+                    "list": _HTTP_OK,
+                    "create": _HTTP_OK,
+                    "read": _HTTP_OK,
+                    "update": _HTTP_OK,
+                    "delete": [403],
+                },
+            ),
+            dummy_acquisition_order,
+        ),
+        (
+            "librarian_readonly",
+            CRUDStatus(
+                specific_status={
+                    "list": _HTTP_OK,
+                    "create": [403],
+                    "read": _HTTP_OK,
+                    "update": [403],
+                    "delete": [403],
+                },
+            ),
+            dummy_acquisition_order,
+        ),
+        ("patron1", CRUDStatus(base_status=[403]), dummy_acquisition_order),
+        ("anonymous", CRUDStatus(base_status=[401]), dummy_acquisition_order),
+        ("admin", CRUDStatus(base_status=_HTTP_OK), dummy_acquisition_order),
     ]
+
     for username, expected_status, data in tests:
         user = user_login(client, username, users)
-        _test_list(expected_status)
-        pid = _test_create(expected_status, data, user)
-        _test_update(expected_status, data, pid, user)
-        _test_read(expected_status, pid)
-
-    tests = [
-        ("patron1", [403]),
-        ("anonymous", [401]),
-        ("librarian", [403]),
-        ("admin", [204]),
-    ]
-    for username, expected_status in tests:
-        user_login(client, username, users)
-        _test_delete(expected_status, ORDER_PID)
+        _test_list(expected_status.list)
+        pid = _test_create(expected_status.create, data, user)
+        _test_update(expected_status.update, data, pid, user)
+        _test_read(expected_status.read, pid)
+        _test_delete(expected_status.delete, ORDER_PID, username)
