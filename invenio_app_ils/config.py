@@ -233,12 +233,12 @@ CELERY_BEAT_SCHEDULE = {
     "stats-process-events": {
         "task": "invenio_stats.tasks.process_events",
         "schedule": timedelta(minutes=30),
-        "args": [("record-view", "file-download")],
+        "args": [("record-view", "file-download", "loan-stats")],
     },
     "stats-aggregate-events": {
         "task": "invenio_stats.tasks.aggregate_events",
         "schedule": timedelta(hours=3),
-        "args": [("record-view-agg", "file-download-agg")],
+        "args": [("record-view-agg", "file-download-agg", "loan-waiting-time-agg")],
     },
     "clean_locations_past_closures_exceptions": {
         "task": (
@@ -920,7 +920,29 @@ STATS_EVENTS = {
             "suffix": "%Y-%m",
         },
     },
+    "loan-stats": {
+        "signal": "invenio_circulation.signals.loan_state_changed_two",
+        "templates": "invenio_circulation.stats.templates.events.loan_stats",
+        "event_builders": [
+            "invenio_circulation.stats.event_builders.loan_event_builder",
+        ],
+        "cls": EventsIndexer,
+        "params": {
+            "preprocessors": [
+                "invenio_circulation.stats.preprocessors.add_loan_metadata",
+                "invenio_circulation.stats.preprocessors.filter_out_started_loans",
+                "invenio_circulation.stats.preprocessors.extract_loan_waiting_time",
+                "invenio_circulation.stats.preprocessors.add_document_status_during_loan_creation",
+                "invenio_circulation.stats.preprocessors.add_pid_as_unique_id",
+            ],
+            "double_click_window": 30,
+            "suffix": "%Y-%m",
+        },
+    },
 }
+
+# Shhhh
+STATS_REGISTER_INDEX_TEMPLATES = False
 
 STATS_AGGREGATIONS = {
     "file-download-agg": dict(
@@ -964,6 +986,30 @@ STATS_AGGREGATIONS = {
                     {"precision_threshold": 1000},
                 )
             ),
+        ),
+    ),
+    "loan-waiting-time-agg": dict(
+        templates="invenio_circulation.stats.templates.aggregations.loan_waiting_time",
+        cls=StatAggregator,
+        params=dict(
+            event="loan-stats",
+            field="document_status_during_loan_creation",
+            interval="day",
+            index_interval="month",
+            copy_fields=dict(pid_value="pid"),
+            metric_fields=dict(
+                unique_count=(
+                    "cardinality",
+                    "pid",
+                    {},
+                ),
+                waiting_time_sum=(
+                    "sum",
+                    "waiting_time",
+                    {},
+                ),
+            ),
+            query_modifiers=[],
         ),
     ),
 }
