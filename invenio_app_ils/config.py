@@ -233,12 +233,12 @@ CELERY_BEAT_SCHEDULE = {
     "stats-process-events": {
         "task": "invenio_stats.tasks.process_events",
         "schedule": timedelta(minutes=30),
-        "args": [("record-view", "file-download", "loan-stats")],
+        "args": [("record-view", "file-download", "loan-states")],
     },
     "stats-aggregate-events": {
         "task": "invenio_stats.tasks.aggregate_events",
         "schedule": timedelta(hours=3),
-        "args": [("record-view-agg", "file-download-agg", "loan-waiting-time-agg")],
+        "args": [("record-view-agg", "file-download-agg", "loan-states-agg")],
     },
     "clean_locations_past_closures_exceptions": {
         "task": (
@@ -920,7 +920,7 @@ STATS_EVENTS = {
             "suffix": "%Y-%m",
         },
     },
-    "loan-stats": {
+    "loan-states": {
         "signal": "invenio_circulation.signals.loan_state_changed_two",
         "templates": "invenio_circulation.stats.templates.events.loan_stats",
         "event_builders": [
@@ -988,11 +988,11 @@ STATS_AGGREGATIONS = {
             ),
         ),
     ),
-    "loan-waiting-time-agg": dict(
+    "loan-states-agg": dict(
         templates="invenio_circulation.stats.templates.aggregations.loan_waiting_time",
         cls=StatAggregator,
         params=dict(
-            event="loan-stats",
+            event="loan-states",
             field="document_status_during_loan_creation",
             interval="day",
             index_interval="month",
@@ -1045,6 +1045,22 @@ STATS_QUERIES = {
             metric_fields=dict(
                 count=("sum", "count", {}),
                 unique_count=("sum", "unique_count", {}),
+            ),
+        ),
+    ),
+    "stats-loan-states": dict(
+        cls=ESTermsQuery,
+        permission_factory=None,
+        params=dict(
+            index="stats-loan-states",
+            copy_fields=dict(),
+            required_filters=dict(
+                document_status_during_loan_creation="document_status_during_loan_creation"
+            ),
+            metric_fields=dict(
+                count=("sum", "count", {}),
+                unique_count=("sum", "unique_count", {}),
+                waiting_time_sum=("sum", "waiting_time_sum", {}),
             ),
         ),
     ),
