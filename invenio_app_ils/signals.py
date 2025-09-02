@@ -13,3 +13,4 @@ _signals = Namespace()
 
 record_viewed = _signals.signal("record-viewed")
 file_downloaded = _signals.signal("file-downloaded")
+ils_record_changed = _signals.signal("ils_record_changed")

@@ -17,6 +17,7 @@ from jsonschema.exceptions import ValidationError
 from werkzeug.utils import cached_property
 
 from invenio_app_ils.errors import IlsValidationError
+from invenio_app_ils.signals import ils_record_changed
 
 
 class RecordValidator(object):
@@ -66,7 +67,12 @@ class IlsRecord(Record):
     def create(cls, data, id_=None, **kwargs):
         """Create IlsRecord record."""
         data["$schema"] = current_jsonschemas.path_to_url(cls._schema)
-        return super().create(data, id_=id_, **kwargs)
+
+        create_result = super().create(data, id_=id_, **kwargs)
+        ils_record_changed.send(
+            current_app._get_current_object(), pid_type=cls._pid_type, method="create"
+        )
+        return create_result
 
     def clear(self):
         """Clear IlsRecord data."""

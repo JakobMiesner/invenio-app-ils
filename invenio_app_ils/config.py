@@ -939,6 +939,21 @@ STATS_EVENTS = {
             "suffix": "%Y-%m",
         },
     },
+    "ils-record-changes": {
+        "signal": "invenio_app_ils.signals.ils_record_changed",
+        "templates": "invenio_app_ils.stats.templates.events.ils_record_stats",
+        "event_builders": [
+            "invenio_app_ils.stats.event_builders.ils_record_event_builder",
+        ],
+        "cls": EventsIndexer,
+        "params": {
+            "preprocessors": [
+                "invenio_app_ils.stats.preprocessors.add_timestamp_as_unique_id",
+            ],
+            "double_click_window": 30,
+            "suffix": "%Y-%m",
+        },
+    },
 }
 
 # Shhhh
