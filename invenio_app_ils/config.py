@@ -15,6 +15,7 @@ You overwrite and set instance-specific configuration by either:
 
 import datetime
 from datetime import timedelta
+from functools import partial
 
 from celery.schedules import crontab
 from invenio_accounts.config import (
@@ -41,6 +42,7 @@ from invenio_app_ils.literature.search import LiteratureSearch
 from invenio_app_ils.locations.indexer import LocationIndexer
 from invenio_app_ils.patrons.indexer import PatronIndexer
 from invenio_app_ils.series.indexer import SeriesIndexer
+from invenio_app_ils.stats.event_builders import ils_record_event_builder
 from invenio_app_ils.vocabularies.indexer import VocabularyIndexer
 
 from .document_requests.api import (
@@ -933,22 +935,58 @@ STATS_EVENTS = {
                 "invenio_circulation.stats.preprocessors.filter_out_started_loans",
                 "invenio_circulation.stats.preprocessors.extract_loan_waiting_time",
                 "invenio_circulation.stats.preprocessors.add_document_status_during_loan_creation",
+                # TODO Augment with patron info
                 "invenio_circulation.stats.preprocessors.add_pid_as_unique_id",
             ],
             "double_click_window": 30,
             "suffix": "%Y-%m",
         },
     },
-    "ils-record-changes": {
-        "signal": "invenio_app_ils.signals.ils_record_changed",
-        "templates": "invenio_app_ils.stats.templates.events.ils_record_stats",
+    # TODO stat for loan creation
+    # TODO stat for loanable documents
+    "ils-record-changes-updates": {
+        "signal": "invenio_records.signals.after_record_update",
+        "templates": "invenio_app_ils.stats.templates.events.ils_record_changes",
         "event_builders": [
-            "invenio_app_ils.stats.event_builders.ils_record_event_builder",
+            partial(ils_record_event_builder, method="update"),
         ],
         "cls": EventsIndexer,
         "params": {
             "preprocessors": [
                 "invenio_app_ils.stats.preprocessors.add_timestamp_as_unique_id",
+                "invenio_app_ils.stats.preprocessors.merge_pid_type_and_method",
+            ],
+            "double_click_window": 30,
+            "suffix": "%Y-%m",
+        },
+    },
+    "ils-record-changes-insertions": {
+        "signal": "invenio_records.signals.after_record_insert",
+        "templates": "invenio_app_ils.stats.templates.events.ils_record_changes",
+        "event_builders": [
+            partial(ils_record_event_builder, method="insert"),
+        ],
+        "cls": EventsIndexer,
+        "params": {
+            "preprocessors": [
+                "invenio_app_ils.stats.preprocessors.add_timestamp_as_unique_id",
+                "invenio_app_ils.stats.preprocessors.merge_pid_type_and_method",
+            ],
+            "double_click_window": 30,
+            "suffix": "%Y-%m",
+        },
+    },
+    "ils-record-changes-deletions": {
+        "signal": "invenio_records.signals.after_record_delete",
+        "templates": "invenio_app_ils.stats.templates.events.ils_record_changes",
+        "event_builders": [
+            partial(ils_record_event_builder, method="delete"),
+        ],
+        "cls": EventsIndexer,
+        "params": {
+            "preprocessors": [
+                "invenio_app_ils.stats.preprocessors.add_timestamp_as_unique_id",
+                "invenio_app_ils.stats.preprocessors.merge_pid_type_and_method",
             ],
             "double_click_window": 30,
             "suffix": "%Y-%m",
@@ -1012,18 +1050,20 @@ STATS_AGGREGATIONS = {
             interval="day",
             index_interval="month",
             copy_fields=dict(pid_value="pid"),
-            metric_fields=dict(
-                unique_count=(
-                    "cardinality",
-                    "pid",
-                    {},
-                ),
-                waiting_time_sum=(
-                    "sum",
-                    "waiting_time",
-                    {},
-                ),
-            ),
+            metric_fields=dict(),
+            query_modifiers=[],
+        ),
+    ),
+    "ils-record-changes-agg": dict(
+        templates="invenio_app_ils.stats.templates.aggregations.ils_record_changes",
+        cls=StatAggregator,
+        params=dict(
+            event="ils-record-changes",
+            field="pid_type__method",
+            interval="day",
+            index_interval="month",
+            copy_fields=dict(pid_type="pid_type", method="method"),
+            metric_fields=dict(),
             query_modifiers=[],
         ),
     ),
@@ -1076,6 +1116,18 @@ STATS_QUERIES = {
                 count=("sum", "count", {}),
                 unique_count=("sum", "unique_count", {}),
                 waiting_time_sum=("sum", "waiting_time_sum", {}),
+            ),
+        ),
+    ),
+    "stats-ils-record-changes": dict(
+        cls=ESTermsQuery,
+        permission_factory=None,
+        params=dict(
+            index="stats-ils-record-changes",
+            copy_fields=dict(),
+            required_filters=dict(pid_type__method="pid_type__method"),
+            metric_fields=dict(
+                count=("sum", "count", {}),
             ),
         ),
     ),

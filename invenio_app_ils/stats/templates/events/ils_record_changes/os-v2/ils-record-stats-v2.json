@@ -1,6 +1,6 @@
 {
   "index_patterns": [
-    "__SEARCH_INDEX_PREFIX__events-stats-loan-states-*"
+    "__SEARCH_INDEX_PREFIX__events-stats-ils-record-changes-*"
   ],
   "settings": {
     "index": {
@@ -19,6 +19,9 @@
         "type": "keyword"
       },
       "method": {
+        "type": "keyword"
+      },
+      "pid_type__method": {
         "type": "keyword"
       }
     }
