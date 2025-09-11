@@ -1,5 +1,6 @@
 import datetime
 
+from invenio_app_ils.proxies import current_app_ils
 from invenio_app_ils.records.api import IlsRecord
 
 
@@ -19,4 +20,15 @@ def ils_record_event_builder(event, sender_app, method=None, record=None, **kwar
             "method": method,
         }
     )
+    return event
+
+
+def count_documents(event):
+    event.update(
+        {
+            "timestamp": datetime.datetime.utcnow().isoformat(),
+            "metric_value": current_app_ils.document_search_cls().count(),
+        }
+    )
+
     return event

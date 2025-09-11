@@ -24,7 +24,7 @@ from invenio_accounts.config import (
 from invenio_records_rest.facets import terms_filter
 from invenio_records_rest.utils import allow_all, deny_all
 from invenio_stats.aggregations import StatAggregator
-from invenio_stats.processors import EventsIndexer
+from invenio_stats.processors import EventsIndexer, PeriodicEventsIndexer
 from invenio_stats.queries import ESTermsQuery
 
 from invenio_app_ils.document_requests.indexer import DocumentRequestIndexer
@@ -242,6 +242,11 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": timedelta(hours=3),
         "args": [("record-view-agg", "file-download-agg", "loan-states-agg")],
     },
+    "stats-process-periodic-events": {
+        "task": "invenio_stats.tasks.process_periodic_events",
+        "schedule": timedelta(days=1),
+        "args": ["record-count-documents"],
+    },
     "clean_locations_past_closures_exceptions": {
         "task": (
             "invenio_app_ils.closures.tasks.clean_locations_past_closures_exceptions"
@@ -274,7 +279,7 @@ JSONSCHEMAS_HOST = "127.0.0.1:5000"
 ###############################################################################
 # CSRF
 ###############################################################################
-REST_CSRF_ENABLED = True
+REST_CSRF_ENABLED = False
 
 ###############################################################################
 # CORS
@@ -994,7 +999,22 @@ STATS_EVENTS = {
     },
 }
 
-# Shhhh
+
+STATS_PERIODIC_EVENTS = {
+    "record-count-documents": {
+        "templates": "invenio_app_ils.stats.templates.events.document_count",
+        "cls": PeriodicEventsIndexer,
+        "params": {
+            "event_builders": [
+                "invenio_app_ils.stats.event_builders.count_documents",
+            ],
+            "suffix": "%Y-%m",
+        },
+    }
+}
+
+
+# TODO figure out if we need this
 STATS_REGISTER_INDEX_TEMPLATES = False
 
 STATS_AGGREGATIONS = {
@@ -1067,6 +1087,19 @@ STATS_AGGREGATIONS = {
             query_modifiers=[],
         ),
     ),
+    "record-count-documents": dict(
+        templates="invenio_app_ils.stats.templates.aggregations.document_count",
+        cls=StatAggregator,
+        params=dict(
+            event="record-count-documents",
+            field="pid_type__method",
+            interval="day",
+            index_interval="month",
+            copy_fields=dict(pid_type="pid_type", method="method"),
+            metric_fields=dict(),
+            query_modifiers=[],
+        ),
+    ),
 }
 
 STATS_QUERIES = {
@@ -1126,6 +1159,18 @@ STATS_QUERIES = {
             index="stats-ils-record-changes",
             copy_fields=dict(),
             required_filters=dict(pid_type__method="pid_type__method"),
+            metric_fields=dict(
+                count=("sum", "count", {}),
+            ),
+        ),
+    ),
+    "stats-ils-record-changes-ne": dict(
+        cls=ESTermsQuery,
+        permission_factory=None,
+        params=dict(
+            index="stats-ils-record-changes",
+            copy_fields=dict(),
+            required_filters=dict(pid_type="pid_type"),
             metric_fields=dict(
                 count=("sum", "count", {}),
             ),
