@@ -17,6 +17,7 @@ RUN python -m site --user-site
 # Install Invenio
 ENV WORKING_DIR=/opt/invenio_app_ils
 ENV INVENIO_INSTANCE_PATH=${WORKING_DIR}/var/instance
+# We have static assets under /invenio-assets, as the react frontend is located at /static
 ENV INVENIO_STATIC_URL_PATH='/invenio-assets'
 ENV INVENIO_STATIC_FOLDER=${INVENIO_INSTANCE_PATH}/invenio-assets
 
