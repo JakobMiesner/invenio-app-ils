@@ -24,7 +24,7 @@ from invenio_accounts.config import (
 from invenio_records_rest.facets import terms_filter
 from invenio_records_rest.utils import allow_all, deny_all
 from invenio_stats.aggregations import StatAggregator
-from invenio_stats.processors import EventsIndexer, PeriodicEventsIndexer
+from invenio_stats.processors import EventsIndexer
 from invenio_stats.queries import ESTermsQuery
 
 from invenio_app_ils.document_requests.indexer import DocumentRequestIndexer
@@ -235,7 +235,14 @@ CELERY_BEAT_SCHEDULE = {
     "stats-process-events": {
         "task": "invenio_stats.tasks.process_events",
         "schedule": timedelta(minutes=30),
-        "args": [("record-view", "file-download", "loan-states")],
+        "args": [
+            (
+                "record-view",
+                "file-download",
+                "loan-states",
+                "test-new-periodic-without-changes",
+            )
+        ],
     },
     "stats-aggregate-events": {
         "task": "invenio_stats.tasks.aggregate_events",
@@ -997,22 +1004,18 @@ STATS_EVENTS = {
             "suffix": "%Y-%m",
         },
     },
-}
-
-
-STATS_PERIODIC_EVENTS = {
-    "record-count-documents": {
+    "count-documents": {
         "templates": "invenio_app_ils.stats.templates.events.document_count",
-        "cls": PeriodicEventsIndexer,
+        "cls": EventsIndexer,
         "params": {
-            "event_builders": [
-                "invenio_app_ils.stats.event_builders.count_documents",
+            "preprocessors": [
+                "invenio_app_ils.stats.preprocessors.add_timestamp_as_unique_id",
             ],
+            "double_click_window": 30,
             "suffix": "%Y-%m",
         },
-    }
+    },
 }
-
 
 # TODO figure out if we need this
 STATS_REGISTER_INDEX_TEMPLATES = False
@@ -1158,7 +1161,7 @@ STATS_QUERIES = {
         params=dict(
             index="stats-ils-record-changes",
             copy_fields=dict(),
-            required_filters=dict(pid_type__method="pid_type__method"),
+            required_filters=dict(),
             metric_fields=dict(
                 count=("sum", "count", {}),
             ),

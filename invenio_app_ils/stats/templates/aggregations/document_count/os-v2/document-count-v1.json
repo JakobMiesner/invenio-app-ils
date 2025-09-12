@@ -1,6 +1,6 @@
 {
   "index_patterns": [
-    "__SEARCH_INDEX_PREFIX__events-stats-ils-record-changes-*"
+    "__SEARCH_INDEX_PREFIX__stats-count-documents-*"
   ],
   "settings": {
     "index": {
@@ -15,18 +15,15 @@
       "timestamp": {
         "type": "date"
       },
-      "pid_type": {
-        "type": "keyword"
+      "document_count": {
+        "type": "number"
       },
-      "method": {
-        "type": "keyword"
-      },
-      "pid_type__method": {
-        "type": "keyword"
+      "available_document_count": {
+        "type": "number"
       }
     }
   },
   "aliases": {
-    "__SEARCH_INDEX_PREFIX__events-stats-ils-record-changes": {}
+    "__SEARCH_INDEX_PREFIX__stats-count-documents": {}
   }
 }

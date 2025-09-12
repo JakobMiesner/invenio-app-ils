@@ -27,7 +27,7 @@ def count_documents(event):
     event.update(
         {
             "timestamp": datetime.datetime.utcnow().isoformat(),
-            "metric_value": current_app_ils.document_search_cls().count(),
+            "document_count": current_app_ils.document_search_cls().count(),
         }
     )
 
