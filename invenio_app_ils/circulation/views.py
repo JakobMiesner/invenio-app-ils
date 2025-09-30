@@ -326,11 +326,42 @@ class LoanStatsResource(IlsCirculationResource):
 
         interval = request.args.get("interval", "day")
         field = request.args.get("field", "start_date")
+        # Parse metrics parameter
+        # Supports two formats:
+        # 1. Simple: field:aggregation,field:aggregation (e.g., loan_duration:avg,extension_count:max)
+        # 2. JSON: [{"field": "loan_duration", "aggregation": "avg"}]
+        metrics_param = request.args.get("metrics", "")
+        metrics = []
+        if metrics_param:
+            try:
+                # Try parsing as JSON first
+                import json
+                if metrics_param.startswith('[') and metrics_param.endswith(']'):
+                    metrics = json.loads(metrics_param)
+                    # Validate the JSON structure
+                    for metric in metrics:
+                        if not isinstance(metric, dict) or "field" not in metric or "aggregation" not in metric:
+                            raise ValueError("Invalid JSON structure")
+                else:
+                    # Parse simple format: field:aggregation,field:aggregation
+                    for metric in metrics_param.split(","):
+                        if ":" in metric:
+                            metric_field, agg_type = metric.strip().split(":", 1)
+                            metrics.append({"field": metric_field.strip(), "aggregation": agg_type.strip()})
+                        else:
+                            # Backward compatibility: assume loan_duration if no field specified
+                            metrics.append({"field": "loan_duration", "aggregation": metric.strip()})
+            except (json.JSONDecodeError, ValueError) as e:
+                from invenio_app_ils.errors import InvalidParameterError
+                raise InvalidParameterError(
+                    description=f"Invalid metrics format. Use 'field:agg,field:agg' or JSON array. Error: {str(e)}"
+                )
 
         # Execute search with aggregations, leveraging existing facets
         result = fetch_loan_statistics_with_facets(
             interval=interval,
             field=field,
+            metrics=metrics,
             request_args=request.args
         )
 
