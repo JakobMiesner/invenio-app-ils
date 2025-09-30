@@ -326,6 +326,8 @@ class LoanStatsResource(IlsCirculationResource):
 
         interval = request.args.get("interval", "day")
         field = request.args.get("field", "start_date")
+        group_by = request.args.get("group_by", "").split(",") if request.args.get("group_by") else []
+        group_by = [g.strip() for g in group_by if g.strip()]  # Clean up empty strings
         # Parse metrics parameter
         # Supports two formats:
         # 1. Simple: field:aggregation,field:aggregation (e.g., loan_duration:avg,extension_count:max)
@@ -362,6 +364,7 @@ class LoanStatsResource(IlsCirculationResource):
             interval=interval,
             field=field,
             metrics=metrics,
+            group_by=group_by,
             request_args=request.args
         )
 
