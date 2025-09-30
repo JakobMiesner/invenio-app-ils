@@ -7,7 +7,7 @@
 
 """Invenio App ILS Circulation views."""
 
-from flask import Blueprint, abort, request
+from flask import Blueprint, abort, request, jsonify
 from flask_login import current_user
 from invenio_circulation.links import loan_links_factory
 from invenio_circulation.pidstore.pids import CIRCULATION_LOAN_PID_TYPE
@@ -160,6 +160,19 @@ def create_circulation_blueprint(app):
         methods=["POST"],
     )
 
+    # /loans/stats - collection level endpoint
+    loan_stats = LoanStatsResource.as_view(
+        LoanStatsResource.view_name,
+        serializers=serializers,
+        default_media_type=default_media_type,
+        ctx=dict(),
+    )
+    blueprint.add_url_rule(
+        "/circulation/loans/stats",
+        view_func=loan_stats,
+        methods=["GET"],
+    )
+
     return blueprint
 
 
@@ -299,3 +312,26 @@ class LoanUpdateDatesResource(IlsCirculationResource):
         update_dates_loan(record, **data)
 
         return self.make_response(pid, record, 202, links_factory=self.links_factory)
+
+
+class LoanStatsResource(IlsCirculationResource):
+    """Loan stats resource."""
+
+    view_name = "loan_stats"
+
+    @need_permissions("stats-loans")
+    def get(self, **kwargs):
+        """Get loan statistics with aggregations and filtering."""
+        from .stats.api import fetch_loan_statistics_with_facets
+
+        interval = request.args.get("interval", "day")
+        field = request.args.get("field", "start_date")
+
+        # Execute search with aggregations, leveraging existing facets
+        result = fetch_loan_statistics_with_facets(
+            interval=interval,
+            field=field,
+            request_args=request.args
+        )
+
+        return jsonify(result)
