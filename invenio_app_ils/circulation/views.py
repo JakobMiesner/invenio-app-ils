@@ -362,7 +362,7 @@ class LoanStatsResource(IlsCirculationResource):
         # Execute search with aggregations, leveraging existing facets
         result = fetch_loan_statistics_with_facets(
             interval=interval,
-            field=field,
+            histogram_date_field=field,
             metrics=metrics,
             group_by=group_by,
             request_args=request.args
