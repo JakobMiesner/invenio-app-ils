@@ -7,7 +7,7 @@
 
 """Invenio App ILS Circulation views."""
 
-from flask import Blueprint, abort, request, jsonify
+from flask import Blueprint, abort, jsonify, request
 from flask_login import current_user
 from invenio_circulation.links import loan_links_factory
 from invenio_circulation.pidstore.pids import CIRCULATION_LOAN_PID_TYPE
@@ -324,9 +324,13 @@ class LoanStatsResource(IlsCirculationResource):
         """Get loan statistics with aggregations and filtering."""
         from .stats.api import fetch_loan_statistics_with_facets
 
-        interval = request.args.get("interval", "day")
-        field = request.args.get("field", "start_date")
-        group_by = request.args.get("group_by", "").split(",") if request.args.get("group_by") else []
+        interval = request.args.get("interval")
+        field = request.args.get("field")
+        group_by = (
+            request.args.get("group_by", "").split(",")
+            if request.args.get("group_by")
+            else []
+        )
         group_by = [g.strip() for g in group_by if g.strip()]  # Clean up empty strings
         # Parse metrics parameter
         # Supports two formats:
@@ -338,23 +342,39 @@ class LoanStatsResource(IlsCirculationResource):
             try:
                 # Try parsing as JSON first
                 import json
-                if metrics_param.startswith('[') and metrics_param.endswith(']'):
+
+                if metrics_param.startswith("[") and metrics_param.endswith("]"):
                     metrics = json.loads(metrics_param)
                     # Validate the JSON structure
                     for metric in metrics:
-                        if not isinstance(metric, dict) or "field" not in metric or "aggregation" not in metric:
+                        if (
+                            not isinstance(metric, dict)
+                            or "field" not in metric
+                            or "aggregation" not in metric
+                        ):
                             raise ValueError("Invalid JSON structure")
                 else:
                     # Parse simple format: field:aggregation,field:aggregation
                     for metric in metrics_param.split(","):
                         if ":" in metric:
                             metric_field, agg_type = metric.strip().split(":", 1)
-                            metrics.append({"field": metric_field.strip(), "aggregation": agg_type.strip()})
+                            metrics.append(
+                                {
+                                    "field": metric_field.strip(),
+                                    "aggregation": agg_type.strip(),
+                                }
+                            )
                         else:
                             # Backward compatibility: assume loan_duration if no field specified
-                            metrics.append({"field": "loan_duration", "aggregation": metric.strip()})
+                            metrics.append(
+                                {
+                                    "field": "loan_duration",
+                                    "aggregation": metric.strip(),
+                                }
+                            )
             except (json.JSONDecodeError, ValueError) as e:
                 from invenio_app_ils.errors import InvalidParameterError
+
                 raise InvalidParameterError(
                     description=f"Invalid metrics format. Use 'field:agg,field:agg' or JSON array. Error: {str(e)}"
                 )
@@ -362,10 +382,9 @@ class LoanStatsResource(IlsCirculationResource):
         # Execute search with aggregations, leveraging existing facets
         result = fetch_loan_statistics_with_facets(
             interval=interval,
-            histogram_date_field=field,
+            interval_date_field=field,
             metrics=metrics,
             group_by=group_by,
-            request_args=request.args
         )
 
         return jsonify(result)
