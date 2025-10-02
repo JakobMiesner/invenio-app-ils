@@ -379,12 +379,15 @@ class LoanStatsResource(IlsCirculationResource):
                     description=f"Invalid metrics format. Use 'field:agg,field:agg' or JSON array. Error: {str(e)}"
                 )
 
-        # Execute search with aggregations, leveraging existing facets
-        result = fetch_loan_statistics_with_facets(
+        buckets = fetch_loan_statistics_with_facets(
             interval=interval,
             interval_date_field=field,
             metrics=metrics,
             group_by=group_by,
         )
 
-        return jsonify(result)
+        response = {
+            "buckets": buckets,
+        }
+
+        return jsonify(response)
