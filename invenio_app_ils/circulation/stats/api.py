@@ -91,7 +91,9 @@ def _get_field_config(field_name):
         return {"field": field_name}
 
 
-def fetch_loan_statistics_with_facets(interval, histogram_date_field, request_args, metrics=None, group_by=None):
+def fetch_loan_statistics_with_facets(
+    interval, histogram_date_field, request_args, metrics=None, group_by=None
+):
     """Fetch loan statistics using existing facets system for filtering.
 
     Args:
@@ -116,7 +118,11 @@ def fetch_loan_statistics_with_facets(interval, histogram_date_field, request_ar
         metrics = []
     valid_aggregations = {"avg", "sum", "min", "max", "median"}
     for metric in metrics:
-        if not isinstance(metric, dict) or "field" not in metric or "aggregation" not in metric:
+        if (
+            not isinstance(metric, dict)
+            or "field" not in metric
+            or "aggregation" not in metric
+        ):
             raise InvalidParameterError(
                 description="Each metric must be a dict with 'field' and 'aggregation' keys"
             )
@@ -129,7 +135,12 @@ def fetch_loan_statistics_with_facets(interval, histogram_date_field, request_ar
         group_by = []
 
     # Define valid date fields
-    valid_date_fields = ["start_date", "end_date", "request_start_date", "request_expire_date"]
+    valid_date_fields = [
+        "start_date",
+        "end_date",
+        "request_start_date",
+        "request_expire_date",
+    ]
 
     if histogram_date_field not in valid_date_fields:
         raise InvalidParameterError(
@@ -142,9 +153,8 @@ def fetch_loan_statistics_with_facets(interval, histogram_date_field, request_ar
         "day": "yyyy-MM-dd",
         "week": "yyyy-MM-dd",  # OpenSearch will truncate to Monday
         "month": "yyyy-MM",
-        "year": "yyyy"
+        "year": "yyyy",
     }
-
 
     search_cls = current_circulation.loan_search_cls
     search = search_cls()
@@ -160,11 +170,12 @@ def fetch_loan_statistics_with_facets(interval, histogram_date_field, request_ar
             source_name = f"field_{i}"
             if field_name == histogram_date_field:
                 # Use a script to truncate date based on interval
-                sources.append({
-                    source_name: {
-                        "terms": {
-                            "script": {
-                                "source": f"""
+                sources.append(
+                    {
+                        source_name: {
+                            "terms": {
+                                "script": {
+                                    "source": f"""
                                     if (doc['{histogram_date_field}'].size() > 0) {{
                                         def dateValue = doc['{histogram_date_field}'].value;
                                         return dateValue.format(DateTimeFormatter.ofPattern('{interval_formats[interval]}'));
@@ -172,17 +183,14 @@ def fetch_loan_statistics_with_facets(interval, histogram_date_field, request_ar
                                         return null;
                                     }}
                                 """
+                                }
                             }
                         }
                     }
-                })
+                )
             else:
                 # Regular field
-                sources.append({
-                    source_name: {
-                        "terms": {"field": field_name}
-                    }
-                })
+                sources.append({source_name: {"terms": {"field": field_name}}})
 
         composite_agg = dsl.A("composite", sources=sources, size=1000)
 
@@ -195,9 +203,13 @@ def fetch_loan_statistics_with_facets(interval, histogram_date_field, request_ar
 
                 field_config = _get_field_config(field_name)
                 if agg_type in {"avg", "sum", "min", "max"}:
-                    composite_agg = composite_agg.metric(agg_name, dsl.A(agg_type, **field_config))
+                    composite_agg = composite_agg.metric(
+                        agg_name, dsl.A(agg_type, **field_config)
+                    )
                 elif agg_type == "median":
-                    composite_agg = composite_agg.metric(agg_name, dsl.A("percentiles", percents=[50], **field_config))
+                    composite_agg = composite_agg.metric(
+                        agg_name, dsl.A("percentiles", percents=[50], **field_config)
+                    )
 
         search.aggs.bucket("loans_over_time", composite_agg)
 
@@ -221,9 +233,13 @@ def fetch_loan_statistics_with_facets(interval, histogram_date_field, request_ar
 
                 field_config = _get_field_config(field_name)
                 if agg_type in {"avg", "sum", "min", "max"}:
-                    date_histogram_agg = date_histogram_agg.metric(agg_name, dsl.A(agg_type, **field_config))
+                    date_histogram_agg = date_histogram_agg.metric(
+                        agg_name, dsl.A(agg_type, **field_config)
+                    )
                 elif agg_type == "median":
-                    date_histogram_agg = date_histogram_agg.metric(agg_name, dsl.A("percentiles", percents=[50], **field_config))
+                    date_histogram_agg = date_histogram_agg.metric(
+                        agg_name, dsl.A("percentiles", percents=[50], **field_config)
+                    )
 
         search.aggs.bucket("loans_over_time", date_histogram_agg)
 
@@ -245,11 +261,6 @@ def fetch_loan_statistics_with_facets(interval, histogram_date_field, request_ar
         print(f"Using composite aggregation: {bool(group_by)}")
         import json
 
-        # Print just the aggregations part
-        if 'aggs' in query_dict:
-            print("Aggregations structure:")
-            print(json.dumps(query_dict['aggs'], indent=2))
-
         print("=== END DEBUG ===")
 
         # Still save full query for reference
@@ -265,7 +276,7 @@ def fetch_loan_statistics_with_facets(interval, histogram_date_field, request_ar
             "interval": interval,
             "field": histogram_date_field,
             "buckets": [],
-            "is_composite": bool(group_by)
+            "is_composite": bool(group_by),
         },
         "aggregations": {"by_state": [], "by_delivery": []},
         "total_loans": result.hits.total.value,
@@ -292,14 +303,16 @@ def fetch_loan_statistics_with_facets(interval, histogram_date_field, request_ar
 
                 bucket_data = {
                     "key": key_values,  # Array of composite key values
-                    "key_as_string": "|".join(str(k) for k in key_values),  # String representation
-                    "doc_count": bucket.doc_count
+                    "key_as_string": "|".join(
+                        str(k) for k in key_values
+                    ),  # String representation
+                    "doc_count": bucket.doc_count,
                 }
             else:
                 # Date histogram aggregation - bucket.key is a single value
                 bucket_data = {
-                    "key": getattr(bucket, 'key_as_string', bucket.key),
-                    "doc_count": bucket.doc_count
+                    "key": getattr(bucket, "key_as_string", bucket.key),
+                    "doc_count": bucket.doc_count,
                 }
 
             # Add metrics to the bucket
