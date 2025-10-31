@@ -20,7 +20,7 @@ from invenio_app_ils.records.metadata_extensions import (
 )
 
 from .circulation import config as circulation_config
-from .circulation.indexer import index_extra_fields_for_loan
+from .circulation.indexer import index_extra_fields_for_loan, index_stat_fields_for_loan
 from .circulation.receivers import register_circulation_signals
 from .document_requests.api import DOCUMENT_REQUEST_PID_TYPE
 from .documents.api import DOCUMENT_PID_TYPE, Document
@@ -327,3 +327,4 @@ def before_loan_index_hook(sender, json=None, record=None, index=None, **kwargs)
     :param kwargs: Any other parameters.
     """
     index_extra_fields_for_loan(json)
+    index_stat_fields_for_loan(json)

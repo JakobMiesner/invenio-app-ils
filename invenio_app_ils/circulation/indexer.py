@@ -97,3 +97,30 @@ def index_extra_fields_for_loan(loan_dict):
 
     can_circulate_items_count = document["circulation"]["can_circulate_items_count"]
     loan_dict["can_circulate_items_count"] = can_circulate_items_count
+
+
+def index_stat_fields_for_loan(loan_dict):
+    stats = {}
+
+    creation_date = datetime.fromisoformat(loan_dict["_created"]).date()
+    start_date = (
+        datetime.strptime(loan_dict["start_date"], "%Y-%m-%d").date()
+        if loan_dict.get("start_date")
+        else None
+    )
+    end_date = (
+        datetime.strptime(loan_dict["end_date"], "%Y-%m-%d").date()
+        if loan_dict.get("end_date")
+        else None
+    )
+
+    if start_date and end_date:
+        loan_duration = (end_date - start_date).days
+        stats["loan_duration"] = loan_duration
+
+    if creation_date and start_date:
+        waiting_time = (start_date - creation_date).days
+        stats["waiting_time"] = waiting_time if waiting_time > 0 else None
+
+    loan_dict["extensions"] = {}
+    loan_dict["extensions"]["stats"] = stats
