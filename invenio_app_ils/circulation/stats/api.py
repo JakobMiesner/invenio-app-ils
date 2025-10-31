@@ -114,7 +114,7 @@ def get_loan_statistics(search, group_by, metrics):
     """
 
     loan_cls = current_circulation.loan_record_cls
-    loan_date_fields = loan_cls.DATE_FIELDS + loan_cls.DATETIME_FIELDS
+    loan_date_fields = loan_cls.DATE_FIELDS + loan_cls.DATETIME_FIELDS + ["_created"]
 
     # Validate group_by param
     if not group_by or len(group_by) == 0:

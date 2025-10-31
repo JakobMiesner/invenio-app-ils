@@ -50,8 +50,7 @@ def add_loan_transition_ids(doc):
 
 def filter_extend_transitions(query):
     """Filter for extend transitions only"""
-    query = query.filter("term", trigger="extend")
-    return query
+    return query.filter("term", trigger="extend")
 
 
 class LoansEventsIndexer(EventsIndexer):

@@ -55,7 +55,6 @@ from .notifications.api import (
     send_loan_overdue_reminder_notification,
 )
 from .serializers import bulk_extend_v1_response
-from .stats.api import get_loan_statistics
 
 
 def create_circulation_blueprint(app):
