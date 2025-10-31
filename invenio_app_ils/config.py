@@ -1000,7 +1000,7 @@ STATS_EVENTS = {
     # e.g. the number of available items when a loan is requested.
     # The loan indexer then later queries those events and adds the information to the loan index.
     "loan-transitions": {
-        "signal": "invenio_circulation.signals.loan_state_changed_new",
+        "signal": "invenio_circulation.signals.loan_state_changed",
         "templates": "invenio_app_ils.stats.templates.events.loan_transitions",
         "event_builders": [
             "invenio_app_ils.stats.event_builders.loan_transition_event_builder",
