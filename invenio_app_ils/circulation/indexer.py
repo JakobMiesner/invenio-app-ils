@@ -6,6 +6,7 @@
 # under the terms of the MIT License; see LICENSE file for more details.
 from invenio_search import current_search_client
 from invenio_stats.tasks import process_events
+from invenio_search.engine import search
 
 """Loan indexer APIs."""
 
@@ -102,6 +103,7 @@ def index_extra_fields_for_loan(loan_dict):
     loan_dict["can_circulate_items_count"] = can_circulate_items_count
 
 
+
 def index_stat_fields_for_loan(loan_dict):
     stats = {}
 
@@ -123,14 +125,15 @@ def index_stat_fields_for_loan(loan_dict):
 
     if creation_date and start_date:
         waiting_time = (start_date - creation_date).days
-        stats["waiting_time"] = waiting_time if waiting_time > 0 else None
+        stats["waiting_time"] = waiting_time if waiting_time >= 0 else None
+
 
     # Document status during creation
     stats_index_name = "events-stats-loan-transitions"
-
     process_events(["loan-transitions"])
+    wait_es_refresh(stats_index_name)
+
     if current_search_client.indices.exists(index=stats_index_name):
-        wait_es_refresh(stats_index_name)
 
         loan_pid = loan_dict["pid"]
         search_body = {}
@@ -139,7 +142,7 @@ def index_stat_fields_for_loan(loan_dict):
             "query": {
                 "bool": {
                     "must": [
-                        {"term": {"field": "available_items_during_request"}},
+                        {"term": {"field": "available_items_during_request_count"}},
                         {"term": {"pid_value": loan_pid}},
                     ],
                 }
@@ -155,8 +158,8 @@ def index_stat_fields_for_loan(loan_dict):
         elif len(hits) == 1:
 
             request_transition_event = hits[0]["_source"]
-            available_items_during_request = request_transition_event["value"]
-            stats["available_items_during_request"] = available_items_during_request
+            available_items_during_request_count = request_transition_event["value"]
+            stats["available_items_during_request"] = available_items_during_request_count > 0
 
     loan_dict["extensions"] = {}
     loan_dict["extensions"]["stats"] = stats

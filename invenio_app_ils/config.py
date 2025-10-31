@@ -994,6 +994,11 @@ STATS_EVENTS = {
             "suffix": "%Y",
         },
     },
+    # Those events are used to track loan state transitions
+    # Only the extensions will be aggregated and used in the intended way of invenio-stats.
+    # Other transitions, e.g. requests, are used to track additional information like
+    # the number of available items when a loan is requested.
+    # They are then later added to the loan index.
     "loan-transitions": {
         "signal": "invenio_circulation.signals.loan_state_changed_new",
         "templates": "invenio_app_ils.stats.templates.events.loan_transitions",

@@ -98,7 +98,7 @@ def loan_transition_event_builder(
 
         event_data.update(
             {
-                "field": "available_items_during_request",
+                "field": "available_items_during_request_count",
                 "value": document_dict["circulation"]["available_items_for_loan_count"],
             }
         )
