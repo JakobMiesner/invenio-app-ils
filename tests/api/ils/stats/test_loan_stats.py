@@ -205,7 +205,7 @@ def test_loan_stats_document_availability_indexer(
     testdata_loan_histogram,
     loan_params,
 ):
-    """Test that the availability of an item during loan request gets indexed to the loan."""
+    """Test that the availability of an item during loan request can be used for grouping loans in the histogram."""
 
     user_login(client, "admin", users)
 
@@ -220,7 +220,6 @@ def test_loan_stats_document_availability_indexer(
         assert res.status_code == 202, res.get_json()
         loan = res.get_json()["metadata"]
         assert loan["state"] == "PENDING"
-        return loan
 
     group_by = [{"field": "extensions.stats.available_items_during_request"}]
 
@@ -229,8 +228,8 @@ def test_loan_stats_document_availability_indexer(
     buckets = _query_loan_histogram(client, group_by)
     assert len(buckets) == 0
 
-    # create loan while one item is available
-    _ = _request_loan("3")
+    # Create loan while one item of the document is available
+    _request_loan("3")
     process_and_aggregate_stats()
     _refresh_loans_index()
     buckets = _query_loan_histogram(client, group_by)
@@ -242,11 +241,12 @@ def test_loan_stats_document_availability_indexer(
     item.commit()
     db.session.commit()
     current_app_ils.item_indexer.index(item)
+    item_search = current_app_ils.item_search_cls
+    current_search.flush_and_refresh(index=item_search.Meta.index)
 
     # Now request another loan for the same document
-    # No item should be available now
     # We need to request this loan with another patron, as it will fail otherwise
-    _ = _request_loan("4")
+    _request_loan("4")
     process_and_aggregate_stats()
     _refresh_loans_index()
     buckets = _query_loan_histogram(client, group_by)
