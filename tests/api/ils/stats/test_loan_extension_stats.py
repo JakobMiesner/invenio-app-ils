@@ -40,7 +40,7 @@ def test_loan_extensions_histogram(
     empty_search,
     testdata,
     loan_params,
-    checkout_loan
+    checkout_loan,
 ):
     """Test that insertions, updates and deletions are tracked correctly."""
 
@@ -72,18 +72,6 @@ def test_loan_extensions_histogram(
 def test_loan_extensions_stats_permissions(client, users):
     """Test that only certain users can access the stats."""
 
-    def test_stats_permissions(stat, tests):
-        params = {}
-        for username, expected_resp_code in tests:
-            user_login(client, username, users)
-            response = query_stats(
-                client,
-                stat,
-                params,
-            )
-            assert response.status_code == expected_resp_code, username
-            user_logout(client)
-
     stat = "loan-extensions"
     tests = [
         ("admin", 200),
@@ -92,4 +80,14 @@ def test_loan_extensions_stats_permissions(client, users):
         ("readonly", 200),
         ("anonymous", 401),
     ]
-    test_stats_permissions(stat, tests)
+
+    params = {}
+    for username, expected_resp_code in tests:
+        user_login(client, username, users)
+        response = query_stats(
+            client,
+            stat,
+            params,
+        )
+        assert response.status_code == expected_resp_code, username
+        user_logout(client)

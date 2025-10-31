@@ -166,8 +166,8 @@ def create_circulation_blueprint(app):
     )
 
     # /loans/stats - collection level endpoint
-    loan_stats = LoanStatsResource.as_view(
-        LoanStatsResource.view_name,
+    loan_stats = LoanHistogramResource.as_view(
+        LoanHistogramResource.view_name,
         serializers=serializers,
         default_media_type=default_media_type,
         ctx=dict(),
@@ -319,10 +319,10 @@ class LoanUpdateDatesResource(IlsCirculationResource):
         return self.make_response(pid, record, 202, links_factory=self.links_factory)
 
 
-class LoanStatsResource(IlsCirculationResource):
+class LoanHistogramResource(IlsCirculationResource):
     """Loan stats resource."""
 
-    view_name = "loan_stats"
+    view_name = "loan_histogram"
 
     @need_permissions("stats-loans")
     def get(self, **kwargs):
