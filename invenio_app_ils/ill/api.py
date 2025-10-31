@@ -223,7 +223,6 @@ class _PatronLoan:
             raise ILLError("The loan end date cannot be in the past.")
 
         item_pid = dict(type=rec._pid_type, value=rec["pid"])
-        # TODO ill loan creation here
         pid, loan = checkout_loan(
             start_date=start_date,
             end_date=end_date,

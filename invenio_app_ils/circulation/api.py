@@ -210,7 +210,6 @@ def _checkout_loan(
         loan.update(new_loan)
     else:
         pid = ils_circulation_loan_pid_minter(record_uuid, data=new_loan)
-        # TODO here lands self checkout and ill loan creation
         loan = loan_cls.create(data=new_loan, id_=record_uuid)
 
     params = deepcopy(loan)
