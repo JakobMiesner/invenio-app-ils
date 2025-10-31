@@ -28,3 +28,23 @@ def add_record_change_ids(doc):
         doc["unique_id"] += f"__{doc['user_id']}"
 
     return doc
+
+
+def add_loan_transition_ids(doc):
+    """Add unique_id and aggregation_id to the doc."""
+
+    doc["aggregation_id"] = f"{doc['trigger']}__{doc.get('field')}"
+
+    # TODO do we need them all
+    doc["unique_id"] = (
+        f"{doc['trigger']}__{doc.get('field')}__{doc.get('value')}__{doc.get('pid_value')}"
+    )
+
+    return doc
+
+
+def filter_non_extension_transitions(doc):
+    """Filter out non-extension transitions."""
+    if doc["trigger"] != "extend":
+        return None
+    return doc

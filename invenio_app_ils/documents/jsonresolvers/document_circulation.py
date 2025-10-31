@@ -6,7 +6,7 @@
 # under the terms of the MIT License; see LICENSE file for more details.
 
 """Resolve the circulation status referenced in the Document."""
-
+from invenio_cache import current_cache
 import jsonresolver
 from werkzeug.routing import Rule
 
@@ -27,6 +27,7 @@ def jsonresolver_loader(url_map):
     """Resolve the referred circulation aggregation for a Document record."""
     from flask import current_app
 
+    @current_cache.memoize(50)
     def circulation_resolver(document_pid):
         """Return circulation info for the given Document."""
         # loans
