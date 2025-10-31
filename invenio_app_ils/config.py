@@ -1008,7 +1008,7 @@ STATS_EVENTS = {
         "cls": LoansEventsIndexer,
         "params": {
             "preprocessors": [
-                "invenio_app_ils.stats.processors.add_loan_transition_ids",
+                "invenio_app_ils.stats.processors.add_loan_transition_unique_id",
             ],
             "double_click_window": 0,
             "suffix": "%Y",
