@@ -16,8 +16,7 @@ from invenio_circulation.pidstore.pids import CIRCULATION_LOAN_PID_TYPE
 from invenio_records_rest.utils import obj_or_import_string
 from invenio_records_rest.views import pass_record
 from invenio_rest import ContentNegotiatedMethodView
-from invenio_circulation.proxies import current_circulation
-from invenio_records_rest.query import default_search_factory
+
 
 from invenio_app_ils.circulation.loaders import (
     loan_checkout_loader,
@@ -165,19 +164,6 @@ def create_circulation_blueprint(app):
         methods=["POST"],
     )
 
-    # /loans/stats - collection level endpoint
-    loan_stats = LoanHistogramResource.as_view(
-        LoanHistogramResource.view_name,
-        serializers=serializers,
-        default_media_type=default_media_type,
-        ctx=dict(),
-    )
-    blueprint.add_url_rule(
-        "/circulation/loans/stats",
-        view_func=loan_stats,
-        methods=["GET"],
-    )
-
     return blueprint
 
 
@@ -317,37 +303,3 @@ class LoanUpdateDatesResource(IlsCirculationResource):
         update_dates_loan(record, **data)
 
         return self.make_response(pid, record, 202, links_factory=self.links_factory)
-
-
-class LoanHistogramResource(IlsCirculationResource):
-    """Loan stats resource."""
-    # TODO move to stats views
-    view_name = "loan_histogram"
-
-    @need_permissions("stats-loans")
-    def get(self, **kwargs):
-        """Get loan statistics with aggregations and filtering."""
-
-        group_by_param = request.args.get("group_by")
-        if not group_by_param:
-            raise MissingRequiredParameterError(description="Missing 'group_by' param")
-        group_by = json.loads(group_by_param)
-        metrics_param = request.args.get("metrics", "[]")
-        metrics = json.loads(metrics_param)
-
-        search_cls = current_circulation.loan_search_cls
-        search = search_cls()
-        search, _ = default_search_factory(self, search)
-
-        # TODO validation
-        buckets = get_loan_statistics(
-            search,
-            group_by,
-            metrics,
-        )
-
-        response = {
-            "buckets": buckets,
-        }
-
-        return jsonify(response)

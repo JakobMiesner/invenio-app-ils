@@ -31,7 +31,7 @@ from collections import namedtuple
 AGGREGATION_TYPES = ["avg", "sum", "min", "max", "median"]
 
 
-LOAN_HISTOGRAM_ENDPOINT = "invenio_app_ils_circulation.loan_histogram"
+LOAN_HISTOGRAM_ENDPOINT = "invenio_app_ils_circulation_stats.loan_histogram"
 
 
 HISTOGRAM_LOANS_DOCUMENT_PID = "docid-loan-histogram"

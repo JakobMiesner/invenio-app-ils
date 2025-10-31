@@ -6,18 +6,25 @@
 # under the terms of the MIT License; see LICENSE file for more details.
 
 """Invenio App ILS circulation stats views."""
-
+import json
 from datetime import datetime
 
-from flask import Blueprint, current_app, request
+from flask import Blueprint, abort, current_app, jsonify, request
+from invenio_app_ils.circulation.views import IlsCirculationResource
+from invenio_circulation.pidstore.pids import CIRCULATION_LOAN_PID_TYPE
+from invenio_circulation.proxies import current_circulation
 from invenio_pidstore import current_pidstore
+from invenio_records_rest.query import default_search_factory
 from invenio_records_rest.utils import obj_or_import_string
 from invenio_rest import ContentNegotiatedMethodView
 
-from invenio_app_ils.circulation.stats.api import fetch_most_loaned_documents
+from invenio_app_ils.circulation.stats.api import (
+    fetch_most_loaned_documents,
+    get_loan_statistics,
+)
 from invenio_app_ils.config import RECORDS_REST_MAX_RESULT_WINDOW
 from invenio_app_ils.documents.api import DOCUMENT_PID_FETCHER, DOCUMENT_PID_TYPE
-from invenio_app_ils.errors import InvalidParameterError
+from invenio_app_ils.errors import InvalidParameterError, MissingRequiredParameterError
 from invenio_app_ils.permissions import need_permissions
 
 
@@ -46,11 +53,26 @@ def create_most_loaned_documents_view(blueprint, app):
     )
 
 
+def create_loan_histogram_view(blueprint, app):
+    """Add url rule for loan histogram view."""
+    loan_stats = LoanHistogramResource.as_view(
+        LoanHistogramResource.view_name,
+        serializers={},
+        ctx=dict(),
+    )
+    blueprint.add_url_rule(
+        "/circulation/stats/loans",
+        view_func=loan_stats,
+        methods=["GET"],
+    )
+
+
 def create_circulation_stats_blueprint(app):
     """Add statistics views to the blueprint."""
     blueprint = Blueprint("invenio_app_ils_circulation_stats", __name__, url_prefix="")
 
     create_most_loaned_documents_view(blueprint, app)
+    create_loan_histogram_view(blueprint, app)
 
     return blueprint
 
@@ -131,3 +153,37 @@ class MostLoanedDocumentsResource(ContentNegotiatedMethodView):
             pid_fetcher=current_pidstore.fetchers[DOCUMENT_PID_FETCHER],
             search_result=most_loaned_documents,
         )
+
+
+class LoanHistogramResource(IlsCirculationResource):
+    """Loan stats resource."""
+
+    view_name = "loan_histogram"
+
+    @need_permissions("stats-loans")
+    def get(self, **kwargs):
+        """Get loan statistics with aggregations and filtering."""
+
+        group_by_param = request.args.get("group_by")
+        if not group_by_param:
+            raise MissingRequiredParameterError(description="Missing 'group_by' param")
+        group_by = json.loads(group_by_param)
+        metrics_param = request.args.get("metrics", "[]")
+        metrics = json.loads(metrics_param)
+
+        search_cls = current_circulation.loan_search_cls
+        search = search_cls()
+        search, _ = default_search_factory(self, search)
+
+        # TODO validation
+        buckets = get_loan_statistics(
+            search,
+            group_by,
+            metrics,
+        )
+
+        response = {
+            "buckets": buckets,
+        }
+
+        return jsonify(response)
