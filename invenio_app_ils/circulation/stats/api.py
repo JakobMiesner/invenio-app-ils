@@ -98,32 +98,30 @@ _VALID_AGGREGATE_FUNCTION_TYPES = _OS_NATIVE_AGGREGATE_FUNCTION_TYPES.union({"me
 _VALID_DATE_FIELDS = {"start_date", "end_date"}
 
 
-def fetch_loan_statistics_with_facets(
-    interval, interval_date_field, metrics=None, group_by=None
-):
+def get_loan_statistics(group_by, metrics):
     """Fetch loan statistics using existing facets system for filtering.
 
     Args:
-        interval (str): Time interval for histogram (day, week, month, year)
-        field (str): Date field to aggregate on (default: start_date)
+        group_by (list): List of group dictionaries with 'field' and optional 'interval' keys
+                        Example: [{"field": "start_date", "interval": "monthly"}, {"field": "state"}]
+                        Valid intervals: daily, weekly, monthly, yearly
         metrics (list): List of metric dictionaries with 'field' and 'aggregation' keys
                        Example: [{"field": "loan_duration", "aggregation": "avg"}]
-        group_by (list): List of fields to group by with the date field using multi-terms aggregation
-                        Example: ["state", "start_date"] - creates composite keys
 
     Returns:
         dict: OpenSearch aggregation results with multi-terms histogram and optional metrics
     """
 
-    # region checking and defaults
-    valid_intervals = ["day", "week", "month", "year"]
-    if interval not in valid_intervals:
+    if len(group_by) == 0:
         raise InvalidParameterError(
-            description=f"Invalid interval. Must be one of: {', '.join(valid_intervals)}"
+            description="group_by must contain at least one grouping field"
         )
+    for group in group_by:
+        if not isinstance(group, dict) or "field" not in group:
+            raise InvalidParameterError(
+                description="Each group_by item must be a dict with 'field' key"
+            )
 
-    if metrics is None:
-        metrics = []
     for metric in metrics:
         if (
             not isinstance(metric, dict)
@@ -138,25 +136,6 @@ def fetch_loan_statistics_with_facets(
                 description=f"Invalid aggregation '{metric['aggregation']}'. Must be one of: {', '.join(_VALID_AGGREGATE_FUNCTION_TYPES)}"
             )
 
-    if group_by is None:
-        group_by = []
-
-    if interval_date_field not in _VALID_DATE_FIELDS:
-        raise InvalidParameterError(
-            description=f"Field must be a valid date field. Valid options: {', '.join(_VALID_DATE_FIELDS)}"
-        )
-
-    # endregion checking and defaults
-
-    # Always use composite aggregation for consistency
-    composite_group_by = [interval_date_field] + group_by
-    interval_formats = {
-        "day": "yyyy-MM-dd",
-        "week": "yyyy-MM-dd",  # OpenSearch will truncate to Monday
-        "month": "yyyy-MM",
-        "year": "yyyy",
-    }
-
     search_cls = current_circulation.loan_search_cls
     search = search_cls()
 
@@ -164,37 +143,29 @@ def fetch_loan_statistics_with_facets(
     # search_index = getattr(search, "_original_index")[0]
     # search, urlkwargs = default_facets_factory(search, search_index)
 
-    # Build composite aggregation sources
     sources = []
-    for i, field_name in enumerate(composite_group_by):
+    for i, group in enumerate(group_by):
         source_name = f"field_{i}"
-        if field_name == interval_date_field:
-            # Use a script to truncate date based on interval
+        field_name = group["field"]
+
+        if field_name in _VALID_DATE_FIELDS and "interval" in group:
+            histogram_interval = group["interval"]
             sources.append(
                 {
                     source_name: {
-                        "terms": {
-                            "script": {
-                                "source": f"""
-                                if (doc['{interval_date_field}'].size() > 0) {{
-                                    def dateValue = doc['{interval_date_field}'].value;
-                                    return dateValue.format(DateTimeFormatter.ofPattern('{interval_formats[interval]}'));
-                                }} else {{
-                                    return null;
-                                }}
-                            """
-                            }
+                        "date_histogram": {
+                            "field": field_name,
+                            "calendar_interval": histogram_interval,
+                            "format": "yyyy-MM-dd",
                         }
                     }
                 }
             )
         else:
-            # Regular field
             sources.append({source_name: {"terms": {"field": field_name}}})
 
     composite_agg = dsl.A("composite", sources=sources, size=1000)
 
-    # Add metrics to the composite aggregation
     for metric in metrics:
         field_name = metric["field"]
         agg_type = metric["aggregation"]
@@ -210,7 +181,9 @@ def fetch_loan_statistics_with_facets(
                 agg_name, dsl.A("percentiles", percents=[50], **field_config)
             )
 
-    search.aggs.bucket("loans_over_time", composite_agg)
+    search.aggs.bucket("loan_aggregations", composite_agg)
+
+    # Only retrieve aggregation results
     search = search[:0]
 
     # TODO remove Debug the aggregation structure
@@ -226,11 +199,11 @@ def fetch_loan_statistics_with_facets(
     result = search.execute()
 
     buckets = []
-    if hasattr(result.aggregations, "loans_over_time"):
-        for bucket in result.aggregations.loans_over_time.buckets:
+    if hasattr(result.aggregations, "loan_aggregations"):
+        for bucket in result.aggregations.loan_aggregations.buckets:
             # Extract key values from composite bucket
             key_values = []
-            for i in range(len(composite_group_by)):
+            for i in range(len(group_by)):
                 field_key = f"field_{i}"
                 if field_key in bucket.key:
                     key_values.append(bucket.key[field_key])

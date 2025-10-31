@@ -7,6 +7,8 @@
 
 """Invenio App ILS Circulation views."""
 
+import json
+
 from flask import Blueprint, abort, jsonify, request
 from flask_login import current_user
 from invenio_circulation.links import loan_links_factory
@@ -52,6 +54,7 @@ from .notifications.api import (
     send_loan_overdue_reminder_notification,
 )
 from .serializers import bulk_extend_v1_response
+from .stats.api import get_loan_statistics
 
 
 def create_circulation_blueprint(app):
@@ -322,68 +325,49 @@ class LoanStatsResource(IlsCirculationResource):
     @need_permissions("stats-loans")
     def get(self, **kwargs):
         """Get loan statistics with aggregations and filtering."""
-        from .stats.api import fetch_loan_statistics_with_facets
 
-        interval = request.args.get("interval")
-        field = request.args.get("field")
-        group_by = (
-            request.args.get("group_by", "").split(",")
-            if request.args.get("group_by")
-            else []
-        )
-        group_by = [g.strip() for g in group_by if g.strip()]  # Clean up empty strings
-        # Parse metrics parameter
-        # Supports two formats:
-        # 1. Simple: field:aggregation,field:aggregation (e.g., loan_duration:avg,extension_count:max)
-        # 2. JSON: [{"field": "loan_duration", "aggregation": "avg"}]
-        metrics_param = request.args.get("metrics", "")
-        metrics = []
-        if metrics_param:
-            try:
-                # Try parsing as JSON first
-                import json
 
-                if metrics_param.startswith("[") and metrics_param.endswith("]"):
-                    metrics = json.loads(metrics_param)
-                    # Validate the JSON structure
-                    for metric in metrics:
-                        if (
-                            not isinstance(metric, dict)
-                            or "field" not in metric
-                            or "aggregation" not in metric
-                        ):
-                            raise ValueError("Invalid JSON structure")
-                else:
-                    # Parse simple format: field:aggregation,field:aggregation
-                    for metric in metrics_param.split(","):
-                        if ":" in metric:
-                            metric_field, agg_type = metric.strip().split(":", 1)
-                            metrics.append(
-                                {
-                                    "field": metric_field.strip(),
-                                    "aggregation": agg_type.strip(),
-                                }
-                            )
-                        else:
-                            # Backward compatibility: assume loan_duration if no field specified
-                            metrics.append(
-                                {
-                                    "field": "loan_duration",
-                                    "aggregation": metric.strip(),
-                                }
-                            )
-            except (json.JSONDecodeError, ValueError) as e:
-                from invenio_app_ils.errors import InvalidParameterError
+        # Parse group_by parameter - JSON format with field and options
+        # Example: [{"field": "start_date", "interval": "monthly"}, {"field": "state"}]
+        group_by_param = request.args.get("group_by", "[]")
+        try:
+            group_by = json.loads(group_by_param)
+            if not isinstance(group_by, list):
+                raise ValueError("group_by must be a JSON array")
+            # Validate group_by structure
+            for group in group_by:
+                if not isinstance(group, dict) or "field" not in group:
+                    raise ValueError("Each group_by item must be a dict with 'field' key")
+        except (json.JSONDecodeError, ValueError) as e:
+            from invenio_app_ils.errors import InvalidParameterError
+            raise InvalidParameterError(
+                description=f"Invalid group_by format. Use JSON array: [{{'field': 'start_date', 'interval': 'monthly'}}]. Error: {str(e)}"
+            )
 
-                raise InvalidParameterError(
-                    description=f"Invalid metrics format. Use 'field:agg,field:agg' or JSON array. Error: {str(e)}"
-                )
+        # Parse metrics parameter - JSON format
+        # Example: [{"field": "loan_duration", "aggregation": "avg"}]
+        metrics_param = request.args.get("metrics", "[]")
+        try:
+            metrics = json.loads(metrics_param)
+            if not isinstance(metrics, list):
+                raise ValueError("metrics must be a JSON array")
+            # Validate metrics structure
+            for metric in metrics:
+                if (
+                    not isinstance(metric, dict)
+                    or "field" not in metric
+                    or "aggregation" not in metric
+                ):
+                    raise ValueError("Each metric must be a dict with 'field' and 'aggregation' keys")
+        except (json.JSONDecodeError, ValueError) as e:
+            from invenio_app_ils.errors import InvalidParameterError
+            raise InvalidParameterError(
+                description=f"Invalid metrics format. Use JSON array: [{{'field': 'loan_duration', 'aggregation': 'avg'}}]. Error: {str(e)}"
+            )
 
-        buckets = fetch_loan_statistics_with_facets(
-            interval=interval,
-            interval_date_field=field,
-            metrics=metrics,
+        buckets = get_loan_statistics(
             group_by=group_by,
+            metrics=metrics,
         )
 
         response = {
