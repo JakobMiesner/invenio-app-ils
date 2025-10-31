@@ -91,8 +91,8 @@ def _get_field_config(field_name):
         return {"field": field_name}
 
 
-_NATIVE_AGGREGATE_FUNCTION_TYPES = {"avg", "sum", "min", "max"}
-_VALID_AGGREGATE_FUNCTION_TYPES = _NATIVE_AGGREGATE_FUNCTION_TYPES.union({"median"})
+_OS_NATIVE_AGGREGATE_FUNCTION_TYPES = {"avg", "sum", "min", "max"}
+_VALID_AGGREGATE_FUNCTION_TYPES = _OS_NATIVE_AGGREGATE_FUNCTION_TYPES.union({"median"})
 
 # Define valid date fields
 _VALID_DATE_FIELDS = {"start_date", "end_date"}
@@ -148,6 +148,7 @@ def fetch_loan_statistics_with_facets(
 
     # endregion checking and defaults
 
+    # Always use composite aggregation for consistency
     composite_group_by = [interval_date_field] + group_by
     interval_formats = {
         "day": "yyyy-MM-dd",
@@ -163,90 +164,62 @@ def fetch_loan_statistics_with_facets(
     # search_index = getattr(search, "_original_index")[0]
     # search, urlkwargs = default_facets_factory(search, search_index)
 
-    if group_by:
-        sources = []
-        for i, field_name in enumerate(composite_group_by):
-            source_name = f"field_{i}"
-            if field_name == interval_date_field:
-                # Use a script to truncate date based on interval
-                sources.append(
-                    {
-                        source_name: {
-                            "terms": {
-                                "script": {
-                                    "source": f"""
-                                    if (doc['{interval_date_field}'].size() > 0) {{
-                                        def dateValue = doc['{interval_date_field}'].value;
-                                        return dateValue.format(DateTimeFormatter.ofPattern('{interval_formats[interval]}'));
-                                    }} else {{
-                                        return null;
-                                    }}
-                                """
-                                }
+    # Build composite aggregation sources
+    sources = []
+    for i, field_name in enumerate(composite_group_by):
+        source_name = f"field_{i}"
+        if field_name == interval_date_field:
+            # Use a script to truncate date based on interval
+            sources.append(
+                {
+                    source_name: {
+                        "terms": {
+                            "script": {
+                                "source": f"""
+                                if (doc['{interval_date_field}'].size() > 0) {{
+                                    def dateValue = doc['{interval_date_field}'].value;
+                                    return dateValue.format(DateTimeFormatter.ofPattern('{interval_formats[interval]}'));
+                                }} else {{
+                                    return null;
+                                }}
+                            """
                             }
                         }
                     }
-                )
-            else:
-                # Regular field
-                sources.append({source_name: {"terms": {"field": field_name}}})
+                }
+            )
+        else:
+            # Regular field
+            sources.append({source_name: {"terms": {"field": field_name}}})
 
-        composite_agg = dsl.A("composite", sources=sources, size=1000)
+    composite_agg = dsl.A("composite", sources=sources, size=1000)
 
-        # Add metrics to the composite aggregation
-        if metrics:
-            for metric in metrics:
-                field_name = metric["field"]
-                agg_type = metric["aggregation"]
-                agg_name = f"{agg_type}_{field_name}"
+    # Add metrics to the composite aggregation
+    for metric in metrics:
+        field_name = metric["field"]
+        agg_type = metric["aggregation"]
+        agg_name = f"{agg_type}_{field_name}"
 
-                field_config = _get_field_config(field_name)
-                if agg_type in _NATIVE_AGGREGATE_FUNCTION_TYPES:
-                    composite_agg = composite_agg.metric(
-                        agg_name, dsl.A(agg_type, **field_config)
-                    )
-                elif agg_type == "median":
-                    composite_agg = composite_agg.metric(
-                        agg_name, dsl.A("percentiles", percents=[50], **field_config)
-                    )
+        field_config = _get_field_config(field_name)
+        if agg_type in _OS_NATIVE_AGGREGATE_FUNCTION_TYPES:
+            composite_agg = composite_agg.metric(
+                agg_name, dsl.A(agg_type, **field_config)
+            )
+        elif agg_type == "median":
+            composite_agg = composite_agg.metric(
+                agg_name, dsl.A("percentiles", percents=[50], **field_config)
+            )
 
-        search.aggs.bucket("loans_over_time", composite_agg)
-
-    else:
-        interval_mapping = {"day": "1d", "week": "1w", "month": "1M", "year": "1y"}
-        date_histogram_agg = dsl.A(
-            "date_histogram",
-            field=interval_date_field,
-            calendar_interval=interval_mapping[interval],
-            format=interval_formats[interval],
-            min_doc_count=0,  # Include buckets with zero documents
-        )
-
-        if metrics:
-            for metric in metrics:
-                field_name = metric["field"]
-                agg_type = metric["aggregation"]
-                agg_name = f"{agg_type}_{field_name}"
-
-                field_config = _get_field_config(field_name)
-                if agg_type in {"avg", "sum", "min", "max"}:
-                    date_histogram_agg = date_histogram_agg.metric(
-                        agg_name, dsl.A(agg_type, **field_config)
-                    )
-                elif agg_type == "median":
-                    date_histogram_agg = date_histogram_agg.metric(
-                        agg_name, dsl.A("percentiles", percents=[50], **field_config)
-                    )
-
-        search.aggs.bucket("loans_over_time", date_histogram_agg)
-
+    search.aggs.bucket("loans_over_time", composite_agg)
     search = search[:0]
 
     # TODO remove Debug the aggregation structure
     if True:
         import json
 
-        with open("/tmp/opensearch_query.json", "w") as f:
+        pth = "/tmp/opensearch_query.json"
+        print(f"Debugging OpenSearch query to {pth}")
+        with open(pth, "w") as f:
             json.dump(search.to_dict(), f, indent=2)
 
     # Execute the search
@@ -255,24 +228,17 @@ def fetch_loan_statistics_with_facets(
     buckets = []
     if hasattr(result.aggregations, "loans_over_time"):
         for bucket in result.aggregations.loans_over_time.buckets:
+            # Extract key values from composite bucket
+            key_values = []
+            for i in range(len(composite_group_by)):
+                field_key = f"field_{i}"
+                if field_key in bucket.key:
+                    key_values.append(bucket.key[field_key])
 
-            if group_by:
-                key_values = []
-                for i in range(len(composite_group_by)):
-                    field_key = f"field_{i}"
-                    if field_key in bucket.key:
-                        key_values.append(bucket.key[field_key])
-
-                bucket_data = {
-                    "key": key_values,
-                    "key_as_string": "|".join(str(k) for k in key_values),
-                    "doc_count": bucket.doc_count,
-                }
-            else:
-                bucket_data = {
-                    "key": getattr(bucket, "key_as_string", bucket.key),
-                    "doc_count": bucket.doc_count,
-                }
+            bucket_data = {
+                "key": key_values,
+                "doc_count": bucket.doc_count,
+            }
 
             for metric in metrics:
                 field_name = metric["field"]
@@ -282,7 +248,7 @@ def fetch_loan_statistics_with_facets(
                 if hasattr(bucket, agg_name):
                     agg_result = getattr(bucket, agg_name)
 
-                    if agg_type in _NATIVE_AGGREGATE_FUNCTION_TYPES:
+                    if agg_type in _OS_NATIVE_AGGREGATE_FUNCTION_TYPES:
                         bucket_data[agg_name] = agg_result.value
                     elif agg_type == "median":
                         median_value = agg_result.values.get("50.0")
@@ -290,8 +256,4 @@ def fetch_loan_statistics_with_facets(
 
             buckets.append(bucket_data)
 
-    response = {
-        "buckets": buckets,
-    }
-
-    return response
+    return buckets
