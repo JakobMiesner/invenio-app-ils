@@ -35,15 +35,10 @@ def add_record_change_ids(doc):
     return doc
 
 
-def add_loan_transition_ids(doc):
-    """Add unique_id and aggregation_id to the doc."""
+def add_loan_transition_unique_id(doc):
+    """Add unique_id to the doc for a loan transition event."""
 
-    doc["aggregation_id"] = f"{doc['trigger']}__{doc.get('field')}"
-
-    # TODO do we need them all
-    doc["unique_id"] = (
-        f"{doc['trigger']}__{doc.get('field')}__{doc.get('value')}__{doc.get('pid_value')}"
-    )
+    doc["unique_id"] = f"{doc['pid_value']}__{doc['trigger']}"
 
     return doc
 

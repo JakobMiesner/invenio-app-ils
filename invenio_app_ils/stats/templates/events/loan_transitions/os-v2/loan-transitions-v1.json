@@ -21,9 +21,6 @@
       "unique_id": {
         "type": "keyword"
       },
-      "aggregation_id": {
-        "type": "keyword"
-      },
       "trigger": {
         "type": "keyword"
       },

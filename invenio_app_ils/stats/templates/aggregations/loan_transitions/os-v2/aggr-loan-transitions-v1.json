@@ -18,7 +18,7 @@
       "updated_timestamp": {
         "type": "date"
       },
-      "aggregation_id": {
+      "trigger": {
         "type": "keyword"
       },
       "count": {

@@ -997,7 +997,7 @@ STATS_EVENTS = {
     # The following events are used to track loan state transitions and store additional data.
     # Only the "extend" transition will be aggregated and used in the way intended by invenio-stats.
     # Other transitions, e.g. "request", are used to track additional information,
-    # e.g. the number of available items when a loan is requested.
+    # like the number of available items when a loan is requested.
     # The loan indexer then later queries those events and adds the information to the loan index.
     "loan-transitions": {
         "signal": "invenio_circulation.signals.loan_state_changed",
@@ -1078,7 +1078,7 @@ STATS_AGGREGATIONS = {
         cls=StatAggregator,
         params=dict(
             event="loan-transitions",
-            field="aggregation_id",
+            field="trigger",
             interval="day",
             index_interval="year",
             copy_fields=dict(),
