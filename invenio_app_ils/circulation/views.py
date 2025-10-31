@@ -333,6 +333,7 @@ class LoanStatsResource(IlsCirculationResource):
         metrics_param = request.args.get("metrics", "[]")
         metrics = json.loads(metrics_param)
 
+        # TODO validation
         buckets = get_loan_statistics(
             group_by,
             metrics,

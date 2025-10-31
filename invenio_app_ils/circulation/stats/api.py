@@ -58,39 +58,6 @@ def fetch_most_loaned_documents(from_date, to_date, bucket_size):
     return res
 
 
-def _get_field_config(field_name):
-    """Get field configuration for aggregations.
-
-    Returns either {'field': 'field_name'} for indexed fields
-    or {'script': {...}} for computed fields.
-
-    Args:
-        field_name (str): Name of the field to aggregate on
-
-    Returns:
-        dict: Configuration for OpenSearch aggregation
-    """
-    # Define computed fields that need scripting
-    computed_fields = {
-        "loan_duration": {
-            "source": """
-                if (doc['end_date'].size() > 0 && doc['start_date'].size() > 0) {
-                    long endDate = doc['end_date'].value.getMillis();
-                    long startDate = doc['start_date'].value.getMillis();
-                    return (endDate - startDate) / (24 * 60 * 60 * 1000);
-                } else {
-                    return 0;
-                }
-            """
-        },
-    }
-
-    if field_name in computed_fields:
-        return {"script": computed_fields[field_name]}
-    else:
-        return {"field": field_name}
-
-
 _OS_NATIVE_AGGREGATE_FUNCTION_TYPES = {"avg", "sum", "min", "max"}
 _VALID_AGGREGATE_FUNCTION_TYPES = _OS_NATIVE_AGGREGATE_FUNCTION_TYPES.union({"median"})
 _VALID_DATE_FIELDS = {"start_date", "end_date"}
@@ -133,8 +100,8 @@ def get_loan_statistics(group_by, metrics):
                 description="Each group_by item must be a dict with 'field' key"
             )
         if (
-            group["field"] in _VALID_DATE_FIELDS
-            and group.get("interval", None) not in _VALID_DATE_INTERVALS
+            group.get(group["field"]) in _VALID_DATE_FIELDS
+            and group.get("interval") not in _VALID_DATE_INTERVALS
         ):
             raise InvalidParameterError(
                 description=(
@@ -182,7 +149,7 @@ def get_loan_statistics(group_by, metrics):
 
         field_name = metric["field"]
         agg_type = metric["aggregation"]
-        field_config = _get_field_config(field_name)
+        field_config = {"field": field_name}
         if agg_type in _OS_NATIVE_AGGREGATE_FUNCTION_TYPES:
             composite_agg = composite_agg.metric(
                 agg_name, dsl.A(agg_type, **field_config)
