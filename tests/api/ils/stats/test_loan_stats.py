@@ -86,6 +86,8 @@ def _test_loan_aggregation(client, group_by, field, tests):
 def test_loan_stats_histogram_single_group(
     client,
     users,
+    empty_event_queues,
+    empty_search,
     testdata_loan_histogram,
 ):
     """Test histogram with single field grouping."""
@@ -106,6 +108,8 @@ def test_loan_stats_histogram_single_group(
 def test_loan_stats_histogram_date_groups(
     client,
     users,
+    empty_event_queues,
+    empty_search,
     testdata_loan_histogram,
 ):
     """Test histogram with date field to group by."""
@@ -128,6 +132,8 @@ def test_loan_stats_histogram_date_groups(
 def test_loan_stats_histogram_multiple_groups(
     client,
     users,
+    empty_event_queues,
+    empty_search,
     testdata_loan_histogram,
 ):
     """Test histogram with multiple fields to group by."""
@@ -158,7 +164,7 @@ def test_loan_stats_histogram_multiple_groups(
 
 
 def test_loan_stats_histogram_metrics_aggregation(
-    client, users, testdata_loan_histogram
+    client, users, empty_event_queues, empty_search, testdata_loan_histogram
 ):
     """Test histogram with various aggregation metrics."""
 
@@ -179,6 +185,8 @@ def test_loan_stats_histogram_metrics_aggregation(
 def test_loan_stats_histogram_search_query(
     client,
     users,
+    empty_event_queues,
+    empty_search,
     testdata_loan_histogram,
 ):
     """Test that the q search query works in loan stats histogram."""
@@ -270,6 +278,8 @@ def test_loan_stats_histogram_group_by_document_availability(
 def test_loan_stats_indexed_fields(
     client,
     users,
+    empty_event_queues,
+    empty_search,
     testdata_loan_histogram,
 ):
     """Test that certain fields are indexed to the loan for stats purposes.
@@ -340,3 +350,44 @@ def test_loan_stats_permissions(client, users):
         ), f"Failed for user: {username}"
 
         user_logout(client)
+
+
+def test_loan_stats_input_validation(client, users):
+    user_login(client, "admin", users)
+    url = url_for(LOAN_HISTOGRAM_ENDPOINT)
+
+    # Attempt to use wrong aggregation type
+    group_by = [{"field": "state"}]
+    metrics = [{"field": "loan_duration", "aggregation": "script"}]
+    resp = query_histogram(client, url, group_by, metrics, q="")
+    assert resp.status_code == 400
+
+    # Attempt to pass an OpenSearch-style scripted field as the metric field (uses brackets/quotes)
+    group_by = [{"field": "state"}]
+    metrics = [{"field": "doc['loan_duration'].value", "aggregation": "avg"}]
+    resp = query_histogram(client, url, group_by, metrics, q="")
+    assert resp.status_code == 400
+
+    # Attempt to use an invalid date interval (OpenSearch-style interval misuse)
+    group_by = [{"field": "start_date", "interval": "1z"}]
+    metrics = [{"field": "loan_duration", "aggregation": "avg"}]
+    resp = query_histogram(client, url, group_by, metrics, q="")
+    assert resp.status_code == 400
+
+    # Attempt to use a date field without an interval
+    group_by = [{"field": "start_date"}]
+    metrics = [{"field": "loan_duration", "aggregation": "avg"}]
+    resp = query_histogram(client, url, group_by, metrics, q="")
+    assert resp.status_code == 400
+
+    # Missing group_by parameter
+    group_by = None
+    metrics = [{"field": "loan_duration", "aggregation": "avg"}]
+    resp = query_histogram(client, url, group_by, metrics, q="")
+    assert resp.status_code == 400
+
+    # Empty group_by parameter
+    group_by = []
+    metrics = [{"field": "loan_duration", "aggregation": "avg"}]
+    resp = query_histogram(client, url, group_by, metrics, q="")
+    assert resp.status_code == 400

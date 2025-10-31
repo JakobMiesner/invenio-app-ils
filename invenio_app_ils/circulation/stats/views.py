@@ -162,28 +162,34 @@ class LoanHistogramResource(IlsCirculationResource):
 
     @need_permissions("stats-loans")
     def get(self, **kwargs):
-        """Get loan statistics with aggregations and filtering."""
+        """Get loan statistics."""
 
         group_by_param = request.args.get("group_by")
         if not group_by_param:
             raise MissingRequiredParameterError(description="Missing 'group_by' param")
-        group_by = json.loads(group_by_param)
         metrics_param = request.args.get("metrics", "[]")
-        metrics = json.loads(metrics_param)
 
+        try:
+            group_by = json.loads(group_by_param)
+            metrics = json.loads(metrics_param)
+        except json.JSONDecodeError as e:
+            raise InvalidParameterError(
+                description="group_by or metric contains invalid JSON"
+            ) from e
+
+        # Construct search to allow for filtering
         search_cls = current_circulation.loan_search_cls
         search = search_cls()
         search, _ = default_search_factory(self, search)
 
-        # TODO validation
-        buckets = get_loan_statistics(
+        aggregation_buckets = get_loan_statistics(
             search,
             group_by,
             metrics,
         )
 
         response = {
-            "buckets": buckets,
+            "buckets": aggregation_buckets,
         }
 
         return jsonify(response)

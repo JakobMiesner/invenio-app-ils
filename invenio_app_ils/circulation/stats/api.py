@@ -7,6 +7,7 @@
 
 """APIs for ILS circulation statistics."""
 
+import re
 
 from invenio_circulation.proxies import current_circulation
 from invenio_records_rest.facets import default_facets_factory
@@ -60,8 +61,29 @@ def fetch_most_loaned_documents(from_date, to_date, bucket_size):
 
 _OS_NATIVE_AGGREGATE_FUNCTION_TYPES = {"avg", "sum", "min", "max"}
 _VALID_AGGREGATE_FUNCTION_TYPES = _OS_NATIVE_AGGREGATE_FUNCTION_TYPES.union({"median"})
-_VALID_DATE_FIELDS = {"start_date", "end_date"}
 _VALID_DATE_INTERVALS = {"1d", "1w", "1M", "1q", "1y"}
+
+_OS_FIELD_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_.]+$")
+
+
+def _validate_os_field_name(field_name):
+    """Validate a field name for search to prevent injection attacks.
+
+    Args:
+        field_name (str): The field name to validate
+
+    Raises:
+        InvalidParameterError: If field name is invalid or potentially malicious
+    """
+
+    if not _OS_FIELD_NAME_PATTERN.match(field_name):
+        raise InvalidParameterError(
+            description=(
+                f"Invalid field name '{field_name}'. "
+                f"Field names must contain only alphanumeric characters, underscores, "
+                f"and dots (for nested fields)."
+            )
+        )
 
 
 def _get_metric_field_name(metric):
@@ -80,6 +102,7 @@ def get_loan_statistics(search, group_by, metrics):
     """Fetch loan statistics using existing facets system for filtering.
 
     Args:
+        search (Search): The base search object to apply aggregations on
         group_by (list): List of group dictionaries with 'field' and optional 'interval' keys
                         Example: [{"field": "start_date", "interval": "monthly"}, {"field": "state"}]
                         Valid intervals: daily, weekly, monthly, yearly
@@ -90,17 +113,25 @@ def get_loan_statistics(search, group_by, metrics):
         dict: OpenSearch aggregation results with multi-terms histogram and optional metrics
     """
 
-    if len(group_by) == 0:
+    loan_cls = current_circulation.loan_record_cls
+    loan_date_fields = loan_cls.DATE_FIELDS + loan_cls.DATETIME_FIELDS
+
+    # Validate group_by param
+    if not group_by or len(group_by) == 0:
         raise InvalidParameterError(
             description="group_by must contain at least one grouping field"
         )
+
     for group in group_by:
         if "field" not in group:
             raise InvalidParameterError(
                 description="Each group_by item must be a dict with 'field' key"
             )
+
+        _validate_os_field_name(group["field"])
+
         if (
-            group.get("field") in _VALID_DATE_FIELDS
+            group["field"] in loan_date_fields
             and group.get("interval") not in _VALID_DATE_INTERVALS
         ):
             raise InvalidParameterError(
@@ -109,28 +140,32 @@ def get_loan_statistics(search, group_by, metrics):
                 )
             )
 
+    # Validate metrics param
     for metric in metrics:
         if "field" not in metric or "aggregation" not in metric:
             raise InvalidParameterError(
                 description="Each metric must be a dict with 'field' and 'aggregation' keys"
             )
+
+        _validate_os_field_name(metric["field"])
+
         if metric["aggregation"] not in _VALID_AGGREGATE_FUNCTION_TYPES:
             raise InvalidParameterError(
                 description=f"Invalid aggregation '{metric['aggregation']}'. Must be one of: {', '.join(_VALID_AGGREGATE_FUNCTION_TYPES)}"
             )
 
+    # Build composite aggregation
     sources = []
     for group in group_by:
         field_name = group["field"]
 
-        if field_name in _VALID_DATE_FIELDS and "interval" in group:
-            histogram_interval = group["interval"]
+        if field_name in loan_date_fields:
             sources.append(
                 {
                     field_name: {
                         "date_histogram": {
                             "field": field_name,
-                            "calendar_interval": histogram_interval,
+                            "calendar_interval": group["interval"],
                             "format": "yyyy-MM-dd",
                         }
                     }
