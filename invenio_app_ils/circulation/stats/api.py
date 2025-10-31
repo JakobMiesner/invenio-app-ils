@@ -149,7 +149,6 @@ def fetch_loan_statistics_with_facets(
     # endregion checking and defaults
 
     composite_group_by = [interval_date_field] + group_by
-
     interval_formats = {
         "day": "yyyy-MM-dd",
         "week": "yyyy-MM-dd",  # OpenSearch will truncate to Monday
@@ -164,9 +163,7 @@ def fetch_loan_statistics_with_facets(
     # search_index = getattr(search, "_original_index")[0]
     # search, urlkwargs = default_facets_factory(search, search_index)
 
-    # Build composite aggregation if we have additional grouping fields beyond just the date
     if group_by:
-        # Create composite aggregation (alternative to multi_terms for broader compatibility)
         sources = []
         for i, field_name in enumerate(composite_group_by):
             source_name = f"field_{i}"
@@ -216,7 +213,6 @@ def fetch_loan_statistics_with_facets(
         search.aggs.bucket("loans_over_time", composite_agg)
 
     else:
-        # Fallback to simple date histogram when only date field is specified
         interval_mapping = {"day": "1d", "week": "1w", "month": "1M", "year": "1y"}
         date_histogram_agg = dsl.A(
             "date_histogram",
@@ -226,7 +222,6 @@ def fetch_loan_statistics_with_facets(
             min_doc_count=0,  # Include buckets with zero documents
         )
 
-        # Add metrics directly to date histogram
         if metrics:
             for metric in metrics:
                 field_name = metric["field"]
@@ -245,35 +240,19 @@ def fetch_loan_statistics_with_facets(
 
         search.aggs.bucket("loans_over_time", date_histogram_agg)
 
-    # Add additional aggregations for overview stats
-    search.aggs.bucket("by_state", dsl.A("terms", field="state"))
-    search.aggs.bucket("by_delivery", dsl.A("terms", field="delivery.method"))
-
-    # We don't need individual loan documents, just aggregations
     search = search[:0]
 
-    # Debug the aggregation structure
+    # TODO remove Debug the aggregation structure
     if True:
-        query_dict = search.to_dict()
-        print("=== DEBUG INFO ===")
-        print(f"Field: {interval_date_field}")
-        print(f"Histogram date field: {interval_date_field}")
-        print(f"Group by fields (categorical): {group_by}")
-        print(f"Composite group by fields: {composite_group_by}")
-        print(f"Using composite aggregation: {bool(group_by)}")
         import json
 
-        print("=== END DEBUG ===")
-
-        # Still save full query for reference
         with open("/tmp/opensearch_query.json", "w") as f:
-            json.dump(query_dict, f, indent=2)
+            json.dump(search.to_dict(), f, indent=2)
 
     # Execute the search
     result = search.execute()
 
     buckets = []
-    # Process histogram buckets - handle both multi-terms and date histogram
     if hasattr(result.aggregations, "loans_over_time"):
         for bucket in result.aggregations.loans_over_time.buckets:
 
@@ -310,7 +289,7 @@ def fetch_loan_statistics_with_facets(
                         bucket_data[agg_name] = median_value
 
             buckets.append(bucket_data)
-    # Format the response
+
     response = {
         "buckets": buckets,
     }
