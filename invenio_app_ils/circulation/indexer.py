@@ -4,6 +4,8 @@
 #
 # invenio-app-ils is free software; you can redistribute it and/or modify it
 # under the terms of the MIT License; see LICENSE file for more details.
+from invenio_search import current_search_client
+from invenio_stats.tasks import process_events
 
 """Loan indexer APIs."""
 
@@ -18,8 +20,9 @@ from invenio_pidstore.errors import PIDDeletedError
 
 from invenio_app_ils.circulation.utils import resolve_item_from_loan
 from invenio_app_ils.documents.api import DOCUMENT_PID_TYPE
-from invenio_app_ils.indexer import ReferencedRecordsIndexer
+from invenio_app_ils.indexer import ReferencedRecordsIndexer, wait_es_refresh
 from invenio_app_ils.proxies import current_app_ils
+from invenio_search.proxies import current_search
 
 
 @shared_task(ignore_result=True)
@@ -121,6 +124,39 @@ def index_stat_fields_for_loan(loan_dict):
     if creation_date and start_date:
         waiting_time = (start_date - creation_date).days
         stats["waiting_time"] = waiting_time if waiting_time > 0 else None
+
+    # Document status during creation
+    stats_index_name = "events-stats-loan-transitions"
+
+    process_events(["loan-transitions"])
+    if current_search_client.indices.exists(index=stats_index_name):
+        wait_es_refresh(stats_index_name)
+
+        loan_pid = loan_dict["pid"]
+        search_body = {}
+
+        search_body = {
+            "query": {
+                "bool": {
+                    "must": [
+                        {"term": {"field": "available_items_during_request"}},
+                        {"term": {"pid_value": loan_pid}},
+                    ],
+                }
+            },
+        }
+
+        search_result = current_search_client.search(
+            index=stats_index_name, body=search_body
+        )
+        hits = search_result["hits"]["hits"]
+        if len(hits) > 1:
+            raise ValueError(f"Multiple request transition events for loan {loan_pid}")
+        elif len(hits) == 1:
+
+            request_transition_event = hits[0]["_source"]
+            available_items_during_request = request_transition_event["value"]
+            stats["available_items_during_request"] = available_items_during_request
 
     loan_dict["extensions"] = {}
     loan_dict["extensions"]["stats"] = stats

@@ -24,11 +24,14 @@
       "aggregation_id": {
         "type": "keyword"
       },
+      "pid_value": {
+        "type": "keyword"
+      },
       "field": {
         "type": "keyword"
       },
       "value": {
-        "type": "boolean"
+        "type": "integer"
       }
     }
   },
