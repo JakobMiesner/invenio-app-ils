@@ -211,6 +211,7 @@ def get_loan_statistics(group_by, metrics):
 
                 if hasattr(bucket, agg_name):
                     agg_result = getattr(bucket, agg_name)
+                    agg_type = metric["aggregation"]
 
                     if agg_type in _OS_NATIVE_AGGREGATE_FUNCTION_TYPES:
                         bucket_data[agg_name] = agg_result.value
