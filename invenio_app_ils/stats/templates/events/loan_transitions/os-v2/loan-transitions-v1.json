@@ -24,6 +24,9 @@
       "aggregation_id": {
         "type": "keyword"
       },
+      "trigger": {
+        "type": "keyword"
+      },
       "pid_value": {
         "type": "keyword"
       },
