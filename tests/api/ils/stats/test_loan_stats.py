@@ -7,6 +7,7 @@
 
 """Test loan stats histogram functionality."""
 
+import datetime
 from invenio_db import db
 from invenio_app_ils.items.api import Item
 from invenio_circulation.proxies import current_circulation
@@ -156,7 +157,9 @@ def test_loan_stats_histogram_multiple_groups(
     assert date_counts[("2025-07-01", "PENDING")] == 1
 
 
-def test_loan_stats_histogram_metrics(client, users, testdata_loan_histogram):
+def test_loan_stats_histogram_metrics_aggregation(
+    client, users, testdata_loan_histogram
+):
     """Test histogram with various aggregation metrics."""
 
     user_login(client, "admin", users)
@@ -196,7 +199,7 @@ def test_loan_stats_histogram_search_query(
     assert state_counts["PENDING"] == 1
 
 
-def test_loan_stats_document_availability_indexer(
+def test_loan_stats_histogram_group_by_document_availability(
     client,
     users,
     empty_event_queues,
@@ -263,6 +266,7 @@ def test_loan_stats_document_availability_indexer(
     assert availability_counts[True] == 1
     assert availability_counts[False] == 1
 
+
 def test_loan_stats_indexed_fields(
     client,
     users,
@@ -271,9 +275,41 @@ def test_loan_stats_indexed_fields(
     """Test that certain fields are indexed to the loan for stats purposes.
 
     * loan_duration
-    * waiting_time gets indexed to the loan.
+    * waiting_time
     """
-    pass
+    expected_waiting_time_days = 3
+    expected_loan_duration_days = 6
+
+    now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+
+    loan_pid = "loan-hist-3"
+    loan_cls = current_circulation.loan_record_cls
+    loan = loan_cls.get_record_by_pid(loan_pid)
+    loan["start_date"] = (
+        (now + datetime.timedelta(days=expected_waiting_time_days)).date().isoformat()
+    )
+    loan["end_date"] = (
+        (
+            now
+            + datetime.timedelta(days=expected_waiting_time_days)
+            + datetime.timedelta(days=expected_loan_duration_days)
+        )
+        .date()
+        .isoformat()
+    )
+
+    loan.commit()
+    db.session.commit()
+    current_circulation.loan_indexer().index(loan)
+    _refresh_loans_index()
+
+    loan_search_cls = current_circulation.loan_search_cls
+    hits = [hit for hit in loan_search_cls().filter("term", pid=loan_pid).scan()]
+    assert len(hits) == 1
+
+    stats = hits[0]["extensions"]["stats"]
+    assert stats["waiting_time"] == expected_waiting_time_days
+    assert stats["loan_duration"] == expected_loan_duration_days
 
 
 def test_loan_stats_permissions(client, users):
