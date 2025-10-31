@@ -27,7 +27,6 @@ def jsonresolver_loader(url_map):
     """Resolve the referred circulation aggregation for a Document record."""
     from flask import current_app
 
-    @current_cache.memoize(50)
     def circulation_resolver(document_pid):
         """Return circulation info for the given Document."""
         # loans
