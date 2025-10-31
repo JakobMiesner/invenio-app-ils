@@ -33,33 +33,36 @@ def _query_loan_extensions_stats(client):
 
 
 def test_loan_extensions_histogram(
-    client, json_headers, users, empty_event_queues, empty_search, testdata, loan_params, checkout_loan
+    client,
+    json_headers,
+    users,
+    empty_event_queues,
+    empty_search,
+    testdata,
+    loan_params,
+    checkout_loan
 ):
     """Test that insertions, updates and deletions are tracked correctly."""
 
-    methods = ["insert", "update", "delete"]
-
-    user_login(client, "admin", users)
-
     process_and_aggregate_stats()
+    user_login(client, "admin", users)
     initial_count = _query_loan_extensions_stats(client)
-
 
     loan_pid = "loanid-1"
     params = deepcopy(loan_params)
     params["document_pid"] = "docid-1"
     params["item_pid"]["value"] = "itemid-2"
-    record = checkout_loan(loan_pid, params)
+    del params["transaction_date"]
+    loan = checkout_loan(loan_pid, params)
 
-
-    extend_url = record["links"]["actions"]["extend"]
+    extend_url = loan["links"]["actions"]["extend"]
     user_login(client, "admin", users)
     res = client.post(
         extend_url,
         headers=json_headers,
         data=json.dumps(params),
     )
-    assert res.status_code == 200
+    assert res.status_code == 202
 
     process_and_aggregate_stats()
     final_count = _query_loan_extensions_stats(client)

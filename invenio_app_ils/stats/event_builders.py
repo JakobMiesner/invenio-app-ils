@@ -87,6 +87,7 @@ def loan_transition_event_builder(
     event_data = {
         "timestamp": datetime.datetime.now().isoformat(),
         "trigger": trigger,
+        "pid_value": loan["pid"],
     }
 
     if trigger == "request":

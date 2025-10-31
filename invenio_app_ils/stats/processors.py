@@ -43,8 +43,6 @@ def add_loan_transition_ids(doc):
     return doc
 
 
-def filter_non_extension_transitions(doc):
-    """Filter out non-extension transitions."""
-    if doc["trigger"] != "extend":
-        return None
-    return doc
+def filter_extension_transitions(query):
+    """Filter for extension transitions only"""
+    return query

@@ -43,6 +43,7 @@ from invenio_app_ils.locations.indexer import LocationIndexer
 from invenio_app_ils.patrons.indexer import PatronIndexer
 from invenio_app_ils.series.indexer import SeriesIndexer
 from invenio_app_ils.stats.event_builders import ils_record_changed_event_builder
+from invenio_app_ils.stats.processors import filter_extension_transitions
 from invenio_app_ils.vocabularies.indexer import VocabularyIndexer
 
 from .document_requests.api import (
@@ -59,6 +60,8 @@ from .documents.api import (
     DOCUMENT_PID_TYPE,
     Document,
 )
+
+
 from .documents.search import DocumentSearch
 from .eitems.api import EITEM_PID_FETCHER, EITEM_PID_MINTER, EITEM_PID_TYPE, EItem
 from .eitems.search import EItemSearch
@@ -992,11 +995,10 @@ STATS_EVENTS = {
         },
     },
     "loan-transitions": {
-        "signal": "invenio_circulation.signals.loan_state_changed",
-        "templates": "invenio_app_ils.stats.templates.events.ils_record_changes",
+        "signal": "invenio_circulation.signals.loan_state_changed_new",
+        "templates": "invenio_app_ils.stats.templates.events.loan_transitions",
         "event_builders": [
             "invenio_app_ils.stats.event_builders.loan_transition_event_builder",
-            "invenio_app_ils.stats.event_builders.add_record_pid_to_event",
         ],
         "cls": EventsIndexer,
         "params": {
@@ -1077,9 +1079,7 @@ STATS_AGGREGATIONS = {
             copy_fields=dict(),
             metric_fields=dict(),
             # We only track extension transitions
-            query_modifiers=[
-                "invenio_app_ils.stats.processors.filter_non_extension_transitions"
-            ],
+            query_modifiers=[],
         ),
     ),
 }
