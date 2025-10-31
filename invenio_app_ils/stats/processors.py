@@ -8,6 +8,11 @@
 
 """ILS stats preprocessors."""
 
+from invenio_circulation.proxies import current_circulation
+from invenio_stats.processors import EventsIndexer
+from invenio_search.engine import search
+from invenio_app_ils.indexer import ReferencedRecordsIndexer, wait_es_refresh
+
 
 def add_record_change_ids(doc):
     """Add unique_id and aggregation_id to the doc."""
@@ -28,3 +33,44 @@ def add_record_change_ids(doc):
         doc["unique_id"] += f"__{doc['user_id']}"
 
     return doc
+
+
+def add_loan_transition_unique_id(doc):
+    """Add unique_id to the doc for a loan transition event."""
+
+    doc["unique_id"] = f"{doc['pid_value']}__{doc['trigger']}"
+
+    return doc
+
+
+def filter_extend_transitions(query):
+    """Filter for extend transitions only"""
+    return query.filter("term", trigger="extend")
+
+
+class LoansEventsIndexer(EventsIndexer):
+    """Events indexer for events related to loans, which are consumed by the loan indexer"""
+
+    def run(self):
+        """Process events queue and reindex affected loans.
+
+        First index events related to loans and afterwards trigger a reindex of the affected loans.
+        The loan indexer can then consume the updated events index.
+        """
+        actions = [action for action in self.actionsiter()]
+        res = search.helpers.bulk(self.client, actions, stats_only=True, chunk_size=50)
+
+        # refresh changed event indices so new documents are immediately available
+        indices = {action["_index"] for action in actions}
+        for index in indices:
+            wait_es_refresh(index)
+
+        # Reindex loans that had events to ensure their index contains the most recent information
+        loan_pids = {action["_source"]["pid_value"] for action in actions}
+        loan_indexer = current_circulation.loan_indexer()
+        loan_cls = current_circulation.loan_record_cls
+        for loan_pid in loan_pids:
+            loan = loan_cls.get_record_by_pid(loan_pid)
+            loan_indexer.index(loan)
+
+        return res

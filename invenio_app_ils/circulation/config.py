@@ -7,7 +7,6 @@
 
 """Configuration for Invenio ILS circulation module."""
 
-from invenio_circulation.api import Loan
 from invenio_circulation.pidstore.pids import (
     _LOANID_CONVERTER,
     CIRCULATION_LOAN_PID_TYPE,
@@ -66,6 +65,7 @@ from .utils import (
     circulation_transaction_location_validator,
     circulation_transaction_user_validator,
 )
+from invenio_app_ils.circulation.api import ILSLoan
 
 ###############################################################################
 # ILS Circulation
@@ -228,7 +228,7 @@ ILS_CIRCULATION_RECORDS_REST_ENDPOINTS = dict(
         search_class=LoansSearch,
         search_factory_imp="invenio_app_ils.search_permissions"
         ":search_factory_filter_by_patron",
-        record_class=Loan,
+        record_class=ILSLoan,
         indexer_class=LoanIndexer,
         record_loaders={
             "application/json": "invenio_circulation.records.loaders:loan_loader"

@@ -6,7 +6,7 @@
 # under the terms of the MIT License; see LICENSE file for more details.
 
 """Resolve the circulation status referenced in the Document."""
-
+from invenio_cache import current_cache
 import jsonresolver
 from werkzeug.routing import Rule
 

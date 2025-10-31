@@ -7,13 +7,16 @@
 
 """Invenio App ILS Circulation views."""
 
-from flask import Blueprint, abort, request
+import json
+
+from flask import Blueprint, abort, jsonify, request
 from flask_login import current_user
 from invenio_circulation.links import loan_links_factory
 from invenio_circulation.pidstore.pids import CIRCULATION_LOAN_PID_TYPE
 from invenio_records_rest.utils import obj_or_import_string
 from invenio_records_rest.views import pass_record
 from invenio_rest import ContentNegotiatedMethodView
+
 
 from invenio_app_ils.circulation.loaders import (
     loan_checkout_loader,

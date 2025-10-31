@@ -15,6 +15,7 @@ from flask_login import current_user
 
 from invenio_app_ils.permissions import backoffice_permission
 from invenio_app_ils.records.api import IlsRecord
+from invenio_app_ils.proxies import current_app_ils
 
 
 def ils_record_changed_event_builder(
@@ -69,5 +70,46 @@ def add_record_pid_to_event(event, sender_app, record=None, **kwargs):
     # We have to get the pid directly from the record,
     # as the pid might not yet be registered (e.g. after record creation).
     event.update({"pid_value": record.get("pid")})
+
+    return event
+
+
+def loan_transition_event_builder(
+    event,
+    sender_app,
+    transition=None,
+    initial_loan=None,
+    loan=None,
+    trigger=None,
+    **kwargs
+):
+    """Build an event for loan creations."""
+    event.update(
+        {
+            "timestamp": datetime.datetime.now().isoformat(),
+            "trigger": trigger,
+            "pid_value": loan["pid"],
+        }
+    )
+
+    if trigger == "request":
+        # Store how many items were available during request.
+        # This information is requested by the loan indexer and added to the loan.
+        document_pid = loan["document_pid"]
+        document_class = current_app_ils.document_record_cls
+        document = document_class.get_record_by_pid(document_pid)
+        document_dict = document.replace_refs()
+
+        event.update(
+            {
+                "field": "available_items_during_request_count",
+                "value": document_dict["circulation"]["available_items_for_loan_count"],
+            }
+        )
+    elif trigger == "extend":
+        # Extensions are aggregated by invenio-stats and no extra information is required
+        pass
+    else:
+        return None
 
     return event

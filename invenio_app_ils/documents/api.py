@@ -241,6 +241,14 @@ class Document(IlsRecordWithRelations):
             )
         return super().delete(**kwargs)
 
+    @property
+    def available_items(self):
+        """Return available physical items."""
+        item_search = current_app_ils.item_search_cls()
+        items = item_search.search_by_document_pid(self["pid"])
+        available = [item for item in items if item["status"] == "CAN_CIRCULATE" and item.get("circulation") == None]
+        return available
+
 
 def document_exists(document_pid):
     """Return True if the Document exists given a PID."""
