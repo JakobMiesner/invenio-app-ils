@@ -321,7 +321,7 @@ class LoanUpdateDatesResource(IlsCirculationResource):
 
 class LoanHistogramResource(IlsCirculationResource):
     """Loan stats resource."""
-
+    # TODO move to stats views
     view_name = "loan_histogram"
 
     @need_permissions("stats-loans")

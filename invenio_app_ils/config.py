@@ -1005,7 +1005,7 @@ STATS_EVENTS = {
         "event_builders": [
             "invenio_app_ils.stats.event_builders.loan_transition_event_builder",
         ],
-        "cls": EventsIndexer,
+        "cls": LoansEventsIndexer,
         "params": {
             "preprocessors": [
                 "invenio_app_ils.stats.processors.add_loan_transition_ids",

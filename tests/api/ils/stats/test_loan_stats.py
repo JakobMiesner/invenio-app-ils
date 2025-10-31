@@ -7,8 +7,13 @@
 
 """Test loan stats histogram functionality."""
 
+from invenio_db import db
+from invenio_app_ils.items.api import Item
+from invenio_circulation.proxies import current_circulation
+from invenio_app_ils.proxies import current_app_ils
 
 import json
+from invenio_search import current_search
 
 from flask import url_for
 from copy import deepcopy
@@ -28,7 +33,13 @@ AGGREGATION_TYPES = ["avg", "sum", "min", "max", "median"]
 LOAN_HISTOGRAM_ENDPOINT = "invenio_app_ils_circulation.loan_histogram"
 
 
-HISTOGRAM_LOANS_DOCID = "docid-loan-histogram"
+HISTOGRAM_LOANS_DOCUMENT_PID = "docid-loan-histogram"
+HISTOGRAM_LOANS_AVAILABLE_ITEM_PID = "itemid-loan-histogram-2"
+
+
+def _refresh_loans_index():
+    search_cls = current_circulation.loan_search_cls
+    current_search.flush_and_refresh(index=search_cls.Meta.index)
 
 
 def _query_loan_histogram(client, group_by, metrics=[], q=""):
@@ -39,7 +50,7 @@ def _query_loan_histogram(client, group_by, metrics=[], q=""):
     # even after future changes the standard testdata for loans.
     if q != "":
         q += " AND "
-    q += "document_pid: " + HISTOGRAM_LOANS_DOCID
+    q += "document_pid: " + HISTOGRAM_LOANS_DOCUMENT_PID
 
     url = url_for(LOAN_HISTOGRAM_ENDPOINT)
     response = query_histogram(client, url, group_by, metrics, q)
@@ -188,6 +199,8 @@ def test_loan_stats_histogram_search_query(
 def test_loan_stats_document_availability_indexer(
     client,
     users,
+    empty_event_queues,
+    empty_search,
     json_headers,
     testdata_loan_histogram,
     loan_params,
@@ -196,32 +209,48 @@ def test_loan_stats_document_availability_indexer(
 
     user_login(client, "admin", users)
 
-    def _request_loan():
+    def _request_loan(patron_pid):
         url = url_for("invenio_app_ils_circulation.loan_request")
 
         new_loan = deepcopy(loan_params)
+        new_loan["patron_pid"] = patron_pid
         new_loan["delivery"] = {"method": "PICKUP"}
+        new_loan["document_pid"] = "docid-loan-histogram"
         res = client.post(url, headers=json_headers, data=json.dumps(new_loan))
-        assert res.status_code == 202
+        assert res.status_code == 202, res.get_json()
         loan = res.get_json()["metadata"]
         assert loan["state"] == "PENDING"
         return loan
 
-    group_by = [{"field": "available_items_during_request_count"}]
+    group_by = [{"field": "extensions.stats.available_items_during_request"}]
 
-    # create loan while item is available
+    # There should be no loans that have the field available_items_during_request indexed on them
     process_and_aggregate_stats()
     buckets = _query_loan_histogram(client, group_by)
     assert len(buckets) == 0
 
-    loan_pid = _request_loan()["pid"]
+    # create loan while one item is available
+    _ = _request_loan("3")
     process_and_aggregate_stats()
+    _refresh_loans_index()
     buckets = _query_loan_histogram(client, group_by)
     assert len(buckets) == 1
 
-    # maybe also test that the information does not get lost when the loan proceeds further down the transition chain (e.g. checking)
-    pass
+    # Make the documents last available item unavailable
+    item = Item.get_record_by_pid(HISTOGRAM_LOANS_AVAILABLE_ITEM_PID)
+    item.update(dict(status="IN_BINDING"))
+    item.commit()
+    db.session.commit()
+    current_app_ils.item_indexer.index(item)
 
+    # Now request another loan for the same document
+    # No item should be available now
+    # We need to request this loan with another patron, as it will fail otherwise
+    _ = _request_loan("4")
+    process_and_aggregate_stats()
+    _refresh_loans_index()
+    buckets = _query_loan_histogram(client, group_by)
+    assert len(buckets) == 2
 
 def test_loan_stats_indexed_fields(
     client,
