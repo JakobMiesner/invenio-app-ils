@@ -93,9 +93,8 @@ def _get_field_config(field_name):
 
 _OS_NATIVE_AGGREGATE_FUNCTION_TYPES = {"avg", "sum", "min", "max"}
 _VALID_AGGREGATE_FUNCTION_TYPES = _OS_NATIVE_AGGREGATE_FUNCTION_TYPES.union({"median"})
-
-# Define valid date fields
 _VALID_DATE_FIELDS = {"start_date", "end_date"}
+_VALID_DATE_INTERVALS = {"1d", "1w", "1M", "1q", "1y"}
 
 
 def get_loan_statistics(group_by, metrics):
@@ -121,6 +120,15 @@ def get_loan_statistics(group_by, metrics):
             raise InvalidParameterError(
                 description="Each group_by item must be a dict with 'field' key"
             )
+        if (
+            group["field"] in _VALID_DATE_FIELDS
+            and group.get("interval", None) not in _VALID_DATE_INTERVALS
+        ):
+            raise InvalidParameterError(
+                description=(
+                    f"Invalid interval. Must be one of: {', '.join(_VALID_DATE_INTERVALS)}"
+                )
+            )
 
     for metric in metrics:
         if (
@@ -144,15 +152,14 @@ def get_loan_statistics(group_by, metrics):
     # search, urlkwargs = default_facets_factory(search, search_index)
 
     sources = []
-    for i, group in enumerate(group_by):
-        source_name = f"field_{i}"
+    for group in group_by:
         field_name = group["field"]
 
         if field_name in _VALID_DATE_FIELDS and "interval" in group:
             histogram_interval = group["interval"]
             sources.append(
                 {
-                    source_name: {
+                    field_name: {
                         "date_histogram": {
                             "field": field_name,
                             "calendar_interval": histogram_interval,
@@ -162,7 +169,7 @@ def get_loan_statistics(group_by, metrics):
                 }
             )
         else:
-            sources.append({source_name: {"terms": {"field": field_name}}})
+            sources.append({field_name: {"terms": {"field": field_name}}})
 
     composite_agg = dsl.A("composite", sources=sources, size=1000)
 
@@ -201,15 +208,8 @@ def get_loan_statistics(group_by, metrics):
     buckets = []
     if hasattr(result.aggregations, "loan_aggregations"):
         for bucket in result.aggregations.loan_aggregations.buckets:
-            # Extract key values from composite bucket
-            key_values = []
-            for i in range(len(group_by)):
-                field_key = f"field_{i}"
-                if field_key in bucket.key:
-                    key_values.append(bucket.key[field_key])
-
             bucket_data = {
-                "key": key_values,
+                "key": bucket.key.to_dict(),
                 "doc_count": bucket.doc_count,
             }
 
