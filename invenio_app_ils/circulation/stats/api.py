@@ -92,7 +92,7 @@ def _get_field_config(field_name):
         return {"field": field_name}
 
 
-def fetch_loan_statistics_with_facets(interval, field, request_args, metrics=None):
+def fetch_loan_statistics_with_facets(interval, field, request_args, metrics=None, group_by=None):
     """Fetch loan statistics using existing facets system for filtering.
 
     Args:
@@ -101,9 +101,11 @@ def fetch_loan_statistics_with_facets(interval, field, request_args, metrics=Non
         request_args (ImmutableMultiDict): Flask request args containing filters
         metrics (list): List of metric dictionaries with 'field' and 'aggregation' keys
                        Example: [{"field": "loan_duration", "aggregation": "avg"}]
+        group_by (list): List of fields to group by with the date field using multi-terms aggregation
+                        Example: ["state", "start_date"] - creates composite keys
 
     Returns:
-        dict: OpenSearch aggregation results with histogram and optional metrics
+        dict: OpenSearch aggregation results with multi-terms histogram and optional metrics
     """
     # Validate interval
     valid_intervals = ["day", "week", "month", "year"]
@@ -126,7 +128,43 @@ def fetch_loan_statistics_with_facets(interval, field, request_args, metrics=Non
                 description=f"Invalid aggregation '{metric['aggregation']}'. Must be one of: {', '.join(valid_aggregations)}"
             )
 
-    # Map interval to OpenSearch calendar_interval
+    # Validate and clean group_by - exclude date fields since field parameter specifies the date dimension
+    if group_by is None:
+        group_by = []
+
+    # Define valid date fields
+    valid_date_fields = ["start_date", "end_date", "request_start_date", "request_expire_date"]
+
+    # Remove any date fields from group_by - they should only be specified via the field parameter
+    original_group_by = group_by[:]
+    group_by = [g for g in group_by if g not in valid_date_fields]
+
+    # Log if we filtered out date fields
+    removed_date_fields = [g for g in original_group_by if g in valid_date_fields]
+    if removed_date_fields:
+        print(f"Warning: Removed date fields from group_by: {', '.join(removed_date_fields)}. Use 'field' parameter to specify date dimension.")
+
+    # Validate field parameter - must be a valid date field
+    if field not in valid_date_fields:
+        raise InvalidParameterError(
+            description=f"Field must be a valid date field. Valid options: {', '.join(valid_date_fields)}"
+        )
+
+    # The date field comes from the field parameter
+    histogram_date_field = field
+
+    # Create final group_by list: [field] + other_fields for composite aggregation
+    composite_group_by = [field] + group_by
+
+    # Map interval to OpenSearch date format for date truncation
+    interval_formats = {
+        "day": "yyyy-MM-dd",
+        "week": "yyyy-MM-dd",  # OpenSearch will truncate to Monday
+        "month": "yyyy-MM",
+        "year": "yyyy"
+    }
+
+    # Map interval to OpenSearch calendar_interval for date_trunc script
     interval_mapping = {"day": "1d", "week": "1w", "month": "1M", "year": "1y"}
 
     search_cls = current_circulation.loan_search_cls
@@ -137,30 +175,79 @@ def fetch_loan_statistics_with_facets(interval, field, request_args, metrics=Non
     search_index = getattr(search, "_original_index", search._index)[0]
     search, urlkwargs = default_facets_factory(search, search_index)
 
-    # Add date histogram aggregation
-    date_histogram_agg = dsl.A(
-        "date_histogram",
-        field=field,
-        calendar_interval=interval_mapping[interval],
-        format="yyyy-MM-dd",
-        min_doc_count=0,  # Include buckets with zero documents
-    )
+    # Build composite aggregation if we have additional grouping fields beyond just the date
+    if group_by:
+        # Create composite aggregation (alternative to multi_terms for broader compatibility)
+        sources = []
+        for i, field_name in enumerate(composite_group_by):
+            source_name = f"field_{i}"
+            if field_name == histogram_date_field:
+                # Use a script to truncate date based on interval
+                sources.append({
+                    source_name: {
+                        "terms": {
+                            "script": {
+                                "source": f"""
+                                    if (doc['{histogram_date_field}'].size() > 0) {{
+                                        def dateValue = doc['{histogram_date_field}'].value;
+                                        return dateValue.format(DateTimeFormatter.ofPattern('{interval_formats[interval]}'));
+                                    }} else {{
+                                        return null;
+                                    }}
+                                """
+                            }
+                        }
+                    }
+                })
+            else:
+                # Regular field
+                sources.append({
+                    source_name: {
+                        "terms": {"field": field_name}
+                    }
+                })
 
-    # Add metrics as sub-aggregations to the date histogram
-    if metrics:
-        for metric in metrics:
-            field_name = metric["field"]
-            agg_type = metric["aggregation"]
-            agg_name = f"{agg_type}_{field_name}"
+        composite_agg = dsl.A("composite", sources=sources, size=1000)
 
-            field_config = _get_field_config(field_name)
-            if agg_type in {"avg", "sum", "min", "max"}:
-                date_histogram_agg = date_histogram_agg.metric(agg_name, dsl.A(agg_type, **field_config))
-            elif agg_type == "median":
-                # Median is 50th percentile
-                date_histogram_agg = date_histogram_agg.metric(agg_name, dsl.A("percentiles", percents=[50], **field_config))
+        # Add metrics to the composite aggregation
+        if metrics:
+            for metric in metrics:
+                field_name = metric["field"]
+                agg_type = metric["aggregation"]
+                agg_name = f"{agg_type}_{field_name}"
 
-    search.aggs.bucket("loans_over_time", date_histogram_agg)
+                field_config = _get_field_config(field_name)
+                if agg_type in {"avg", "sum", "min", "max"}:
+                    composite_agg = composite_agg.metric(agg_name, dsl.A(agg_type, **field_config))
+                elif agg_type == "median":
+                    composite_agg = composite_agg.metric(agg_name, dsl.A("percentiles", percents=[50], **field_config))
+
+        search.aggs.bucket("loans_over_time", composite_agg)
+
+    else:
+        # Fallback to simple date histogram when only date field is specified
+        date_histogram_agg = dsl.A(
+            "date_histogram",
+            field=histogram_date_field,
+            calendar_interval=interval_mapping[interval],
+            format=interval_formats[interval],
+            min_doc_count=0,  # Include buckets with zero documents
+        )
+
+        # Add metrics directly to date histogram
+        if metrics:
+            for metric in metrics:
+                field_name = metric["field"]
+                agg_type = metric["aggregation"]
+                agg_name = f"{agg_type}_{field_name}"
+
+                field_config = _get_field_config(field_name)
+                if agg_type in {"avg", "sum", "min", "max"}:
+                    date_histogram_agg = date_histogram_agg.metric(agg_name, dsl.A(agg_type, **field_config))
+                elif agg_type == "median":
+                    date_histogram_agg = date_histogram_agg.metric(agg_name, dsl.A("percentiles", percents=[50], **field_config))
+
+        search.aggs.bucket("loans_over_time", date_histogram_agg)
 
     # Add additional aggregations for overview stats
     search.aggs.bucket("by_state", dsl.A("terms", field="state"))
@@ -169,47 +256,76 @@ def fetch_loan_statistics_with_facets(interval, field, request_args, metrics=Non
     # We don't need individual loan documents, just aggregations
     search = search[:0]
 
-    # TODO remove, this prints the OpenSearch query for debugging/performance testing
+    # Debug the aggregation structure
     if True:
         query_dict = search.to_dict()
-        print("=== OpenSearch Query ===")
-        print(f"Index: {search._index}")
-        print(f"Using client: {type(search._using).__name__}")
+        print("=== DEBUG INFO ===")
+        print(f"Interval: {interval} -> {interval_mapping[interval]}")
+        print(f"Field: {field}")
+        print(f"Histogram date field: {histogram_date_field}")
+        print(f"Group by fields (categorical): {group_by}")
+        print(f"Composite group by fields: {composite_group_by}")
+        print(f"Using composite aggregation: {bool(group_by)}")
         import json
 
-        print("Query Body:")
-        print(json.dumps(query_dict, indent=2))
-        print("=== End Query ===")
+        # Print just the aggregations part
+        if 'aggs' in query_dict:
+            print("Aggregations structure:")
+            print(json.dumps(query_dict['aggs'], indent=2))
 
-        # Alternative: Log to file for easier copy-paste
+        print("=== END DEBUG ===")
+
+        # Still save full query for reference
         with open("/tmp/opensearch_query.json", "w") as f:
             json.dump(query_dict, f, indent=2)
-        print("Query also saved to /tmp/opensearch_query.json")
 
     # Execute the search
     result = search.execute()
 
     # Format the response
     response = {
-        "histogram": {"interval": interval, "field": field, "buckets": []},
+        "histogram": {
+            "interval": interval,
+            "field": histogram_date_field,
+            "buckets": [],
+            "is_composite": bool(group_by)
+        },
         "aggregations": {"by_state": [], "by_delivery": []},
         "total_loans": result.hits.total.value,
         "filters_applied": {
             "request_args": dict(request_args),
             "facets_used": list(urlkwargs.keys()) if "urlkwargs" in locals() else [],
             "metrics_requested": metrics,
+            "group_by_fields": group_by,
+            "composite_fields": composite_group_by,
         },
     }
 
-    # Process histogram buckets
+    # Process histogram buckets - handle both multi-terms and date histogram
     if hasattr(result.aggregations, "loans_over_time"):
         for bucket in result.aggregations.loans_over_time.buckets:
-            bucket_data = {
-                "key": bucket.key_as_string,
-                "doc_count": bucket.doc_count
-            }
 
-            # Add metrics for this time bucket
+            if group_by:
+                # Composite aggregation - bucket.key is an object with field_0, field_1, etc.
+                key_values = []
+                for i in range(len(composite_group_by)):
+                    field_key = f"field_{i}"
+                    if field_key in bucket.key:
+                        key_values.append(bucket.key[field_key])
+
+                bucket_data = {
+                    "key": key_values,  # Array of composite key values
+                    "key_as_string": "|".join(str(k) for k in key_values),  # String representation
+                    "doc_count": bucket.doc_count
+                }
+            else:
+                # Date histogram aggregation - bucket.key is a single value
+                bucket_data = {
+                    "key": getattr(bucket, 'key_as_string', bucket.key),
+                    "doc_count": bucket.doc_count
+                }
+
+            # Add metrics to the bucket
             for metric in metrics:
                 field_name = metric["field"]
                 agg_type = metric["aggregation"]
