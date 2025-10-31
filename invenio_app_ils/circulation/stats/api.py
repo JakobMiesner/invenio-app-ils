@@ -128,7 +128,7 @@ def get_loan_statistics(group_by, metrics):
             description="group_by must contain at least one grouping field"
         )
     for group in group_by:
-        if not isinstance(group, dict) or "field" not in group:
+        if "field" not in group:
             raise InvalidParameterError(
                 description="Each group_by item must be a dict with 'field' key"
             )
@@ -143,11 +143,7 @@ def get_loan_statistics(group_by, metrics):
             )
 
     for metric in metrics:
-        if (
-            not isinstance(metric, dict)
-            or "field" not in metric
-            or "aggregation" not in metric
-        ):
+        if "field" not in metric or "aggregation" not in metric:
             raise InvalidParameterError(
                 description="Each metric must be a dict with 'field' and 'aggregation' keys"
             )
@@ -158,10 +154,6 @@ def get_loan_statistics(group_by, metrics):
 
     search_cls = current_circulation.loan_search_cls
     search = search_cls()
-
-    # TODO add search filters
-    # search_index = getattr(search, "_original_index")[0]
-    # search, urlkwargs = default_facets_factory(search, search_index)
 
     sources = []
     for group in group_by:
