@@ -48,6 +48,18 @@ The endpoint supports all the same filters as the regular loan listing (`/circul
 - `document_pid`: Filter by specific document PID
 - `item_pid`: Filter by specific item PID
 - `returns.end_date`: Filter overdue loans using special overdue logic
+- `metrics`: Metrics to calculate - supports two formats:
+  - **Simple format**: `field:aggregation,field:aggregation`
+  - **JSON format**: `[{"field": "field_name", "aggregation": "agg_type"}]`
+  - Available fields:
+    - `loan_duration` - Loan duration in days (computed from end_date - start_date)
+    - `extension_count` - Number of loan extensions (indexed field)
+    - Any other indexed numeric field in the loan documents
+  - Available aggregations: `avg`, `sum`, `min`, `max`, `median`
+  - Examples:
+    - `loan_duration:avg` - Average loan duration in days
+    - `extension_count:max` - Maximum extensions for any loan
+    - `loan_duration:median` - Median loan duration in days
 - Plus any other filters available in the loan facets configuration
 
 ## Example Requests
@@ -74,6 +86,36 @@ curl -H "Authorization: Bearer <token>" \
 ```bash
 curl -H "Authorization: Bearer <token>" \
   "/circulation/loans/stats?interval=year&delivery=pickup&delivery=mail"
+```
+
+### Weekly statistics with average loan duration
+```bash
+curl -H "Authorization: Bearer <token>" \
+  "/circulation/loans/stats?interval=week&metrics=loan_duration:avg&from_date=2024-01-01"
+```
+
+### Monthly statistics with multiple metrics
+```bash
+curl -H "Authorization: Bearer <token>" \
+  "/circulation/loans/stats?interval=month&metrics=loan_duration:avg,loan_duration:median,extension_count:max&state=ITEM_RETURNED"
+```
+
+### Multiple metrics with different aggregations
+```bash
+curl -H "Authorization: Bearer <token>" \
+  "/circulation/loans/stats?interval=day&metrics=loan_duration:avg,loan_duration:median,extension_count:max&from_date=2024-01-01&to_date=2024-01-31"
+```
+
+### Advanced metrics - combining computed and indexed fields (Simple format)
+```bash
+curl -H "Authorization: Bearer <token>" \
+  "/circulation/loans/stats?interval=week&metrics=loan_duration:avg,extension_count:sum"
+```
+
+### Using JSON format for complex metrics
+```bash
+curl -H "Authorization: Bearer <token>" \
+  "/circulation/loans/stats?interval=day&metrics=[{\"field\":\"loan_duration\",\"aggregation\":\"avg\"},{\"field\":\"extension_count\",\"aggregation\":\"max\"}]"
 ```
 
 ## Response Format
@@ -116,6 +158,13 @@ curl -H "Authorization: Bearer <token>" \
       }
     ]
   },
+  "metrics": {
+    "avg_loan_duration": 14.5,
+    "median_loan_duration": 12.0,
+    "max_extension_count": 3.0,
+    "min_loan_duration": 1.0,
+    "sum_extension_count": 89.0
+  },
   "total_loans": 77,
   "filters_applied": {
     "request_args": {
@@ -138,8 +187,45 @@ curl -H "Authorization: Bearer <token>" \
 - `aggregations`: Additional breakdowns of the data
   - `by_state`: Loan counts grouped by state
   - `by_delivery`: Loan counts grouped by delivery method
+- `metrics`: Statistical metrics (only present if metrics requested)
+  - Key format: `{aggregation}_{field_name}`
+  - Examples:
+    - `avg_loan_duration`: Average loan duration
+    - `median_loan_duration`: Median loan duration
+    - `max_extension_count`: Maximum extensions for any loan
+    - `min_loan_duration`: Shortest loan duration
+    - `sum_extension_count`: Total extensions across all loans
 - `total_loans`: Total number of loans matching the filters
 - `filters_applied`: Summary of filters applied to the query
+
+## Performance Considerations
+
+### **Query-time vs Index-time Computation**
+
+**Current Implementation: Query-time (Scripting)**
+- **Pros**: Always accurate, no extra storage, flexible
+- **Cons**: Slower queries, CPU intensive on large datasets
+
+**Alternative: Index-time Computation**
+For better performance with large datasets, consider adding computed fields to the index:
+
+```python
+# During loan indexing, add computed fields:
+{
+  "loan_duration_days": (end_date - start_date) / (24 * 60 * 60 * 1000),
+  "loan_duration_hours": (end_date - start_date) / (60 * 60 * 1000),
+  "overdue_days": max(0, (now - end_date) / (24 * 60 * 60 * 1000))
+}
+```
+
+**Benefits of pre-computed fields:**
+- 10-100x faster queries on large datasets
+- Can be indexed for even better performance
+- Reduces OpenSearch cluster load
+
+**When to use each approach:**
+- **Query-time**: Small datasets (<100k loans), occasional queries, always need current overdue calculations
+- **Index-time**: Large datasets (>100k loans), frequent dashboard queries, performance-critical applications
 
 ## Use Cases
 
@@ -149,6 +235,7 @@ curl -H "Authorization: Bearer <token>" \
 4. **Patron Activity**: Analyze individual patron borrowing patterns
 5. **Collection Usage**: Track document popularity over time
 6. **Operational Insights**: Monitor loan states and return patterns
+7. **Performance Metrics**: Average loan duration, extension patterns, overdue analysis
 
 ## Error Responses
 

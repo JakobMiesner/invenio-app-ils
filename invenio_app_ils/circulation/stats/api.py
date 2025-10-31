@@ -58,16 +58,52 @@ def fetch_most_loaned_documents(from_date, to_date, bucket_size):
     return res
 
 
-def fetch_loan_statistics_with_facets(interval, field, request_args):
+def _get_field_config(field_name):
+    """Get field configuration for aggregations.
+
+    Returns either {'field': 'field_name'} for indexed fields
+    or {'script': {...}} for computed fields.
+
+    Args:
+        field_name (str): Name of the field to aggregate on
+
+    Returns:
+        dict: Configuration for OpenSearch aggregation
+    """
+    # Define computed fields that need scripting
+    computed_fields = {
+        "loan_duration": {
+            "source": """
+                if (doc['end_date'].size() > 0 && doc['start_date'].size() > 0) {
+                    long endDate = doc['end_date'].value.getMillis();
+                    long startDate = doc['start_date'].value.getMillis();
+                    return (endDate - startDate) / (24 * 60 * 60 * 1000);
+                } else {
+                    return 0;
+                }
+            """
+        },
+    }
+
+    if field_name in computed_fields:
+        return {"script": computed_fields[field_name]}
+    else:
+        # Assume it's an indexed field
+        return {"field": field_name}
+
+
+def fetch_loan_statistics_with_facets(interval, field, request_args, metrics=None):
     """Fetch loan statistics using existing facets system for filtering.
 
     Args:
         interval (str): Time interval for histogram (day, week, month, year)
         field (str): Date field to aggregate on (default: start_date)
         request_args (ImmutableMultiDict): Flask request args containing filters
+        metrics (list): List of metric dictionaries with 'field' and 'aggregation' keys
+                       Example: [{"field": "loan_duration", "aggregation": "avg"}]
 
     Returns:
-        dict: OpenSearch aggregation results
+        dict: OpenSearch aggregation results with histogram and optional metrics
     """
     # Validate interval
     valid_intervals = ["day", "week", "month", "year"]
@@ -76,38 +112,30 @@ def fetch_loan_statistics_with_facets(interval, field, request_args):
             description=f"Invalid interval. Must be one of: {', '.join(valid_intervals)}"
         )
 
+    # Validate metrics
+    if metrics is None:
+        metrics = []
+    valid_aggregations = {"avg", "sum", "min", "max", "median"}
+    for metric in metrics:
+        if not isinstance(metric, dict) or "field" not in metric or "aggregation" not in metric:
+            raise InvalidParameterError(
+                description="Each metric must be a dict with 'field' and 'aggregation' keys"
+            )
+        if metric["aggregation"] not in valid_aggregations:
+            raise InvalidParameterError(
+                description=f"Invalid aggregation '{metric['aggregation']}'. Must be one of: {', '.join(valid_aggregations)}"
+            )
+
     # Map interval to OpenSearch calendar_interval
     interval_mapping = {"day": "1d", "week": "1w", "month": "1M", "year": "1y"}
 
     search_cls = current_circulation.loan_search_cls
     search = search_cls()
 
-    # Convert request args to MultiDict for facets system
-    filter_args = MultiDict(request_args)
-
-    # Only need to map the date parameters (facets expect different names)
-    if "from_date" in request_args:
-        filter_args["loans_from_date"] = request_args["from_date"]
-        filter_args.pop("from_date", None)
-    if "to_date" in request_args:
-        filter_args["loans_to_date"] = request_args["to_date"]
-        filter_args.pop("to_date", None)
-
     # Apply the existing facets using the standard facets factory
     # This will automatically apply all the configured post_filters from circulation config
     search_index = getattr(search, "_original_index", search._index)[0]
-
-    # Temporarily replace request args to use our filter_args
-    import flask
-
-    original_args = flask.request.args
-    flask.request.args = filter_args
-
-    try:
-        search, urlkwargs = default_facets_factory(search, search_index)
-    finally:
-        # Restore original request args
-        flask.request.args = original_args
+    search, urlkwargs = default_facets_factory(search, search_index)
 
     # Add date histogram aggregation
     date_histogram_agg = dsl.A(
@@ -117,6 +145,21 @@ def fetch_loan_statistics_with_facets(interval, field, request_args):
         format="yyyy-MM-dd",
         min_doc_count=0,  # Include buckets with zero documents
     )
+
+    # Add metrics as sub-aggregations to the date histogram
+    if metrics:
+        for metric in metrics:
+            field_name = metric["field"]
+            agg_type = metric["aggregation"]
+            agg_name = f"{agg_type}_{field_name}"
+
+            field_config = _get_field_config(field_name)
+            if agg_type in {"avg", "sum", "min", "max"}:
+                date_histogram_agg = date_histogram_agg.metric(agg_name, dsl.A(agg_type, **field_config))
+            elif agg_type == "median":
+                # Median is 50th percentile
+                date_histogram_agg = date_histogram_agg.metric(agg_name, dsl.A("percentiles", percents=[50], **field_config))
+
     search.aggs.bucket("loans_over_time", date_histogram_agg)
 
     # Add additional aggregations for overview stats
@@ -154,15 +197,35 @@ def fetch_loan_statistics_with_facets(interval, field, request_args):
         "filters_applied": {
             "request_args": dict(request_args),
             "facets_used": list(urlkwargs.keys()) if "urlkwargs" in locals() else [],
+            "metrics_requested": metrics,
         },
     }
 
     # Process histogram buckets
     if hasattr(result.aggregations, "loans_over_time"):
         for bucket in result.aggregations.loans_over_time.buckets:
-            response["histogram"]["buckets"].append(
-                {"key": bucket.key_as_string, "doc_count": bucket.doc_count}
-            )
+            bucket_data = {
+                "key": bucket.key_as_string,
+                "doc_count": bucket.doc_count
+            }
+
+            # Add metrics for this time bucket
+            for metric in metrics:
+                field_name = metric["field"]
+                agg_type = metric["aggregation"]
+                agg_name = f"{agg_type}_{field_name}"
+
+                if hasattr(bucket, agg_name):
+                    agg_result = getattr(bucket, agg_name)
+
+                    if agg_type in ["avg", "sum", "min", "max"]:
+                        bucket_data[agg_name] = agg_result.value
+                    elif agg_type == "median":
+                        # Extract the 50th percentile value
+                        median_value = agg_result.values.get("50.0")
+                        bucket_data[agg_name] = median_value
+
+            response["histogram"]["buckets"].append(bucket_data)
 
     # Process state aggregations
     if hasattr(result.aggregations, "by_state"):
