@@ -109,12 +109,12 @@ def index_stats_fields_for_loan(loan_dict):
 
     creation_date = datetime.fromisoformat(loan_dict["_created"]).date()
     start_date = (
-        datetime.strptime(loan_dict["start_date"], "%Y-%m-%d").date()
+        datetime.fromisoformat(loan_dict["start_date"]).date()
         if loan_dict.get("start_date")
         else None
     )
     end_date = (
-        datetime.strptime(loan_dict["end_date"], "%Y-%m-%d").date()
+        datetime.fromisoformat(loan_dict["end_date"]).date()
         if loan_dict.get("end_date")
         else None
     )
