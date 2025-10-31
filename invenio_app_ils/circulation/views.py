@@ -16,6 +16,8 @@ from invenio_circulation.pidstore.pids import CIRCULATION_LOAN_PID_TYPE
 from invenio_records_rest.utils import obj_or_import_string
 from invenio_records_rest.views import pass_record
 from invenio_rest import ContentNegotiatedMethodView
+from invenio_circulation.proxies import current_circulation
+from invenio_records_rest.query import default_search_factory
 
 from invenio_app_ils.circulation.loaders import (
     loan_checkout_loader,
@@ -333,8 +335,13 @@ class LoanStatsResource(IlsCirculationResource):
         metrics_param = request.args.get("metrics", "[]")
         metrics = json.loads(metrics_param)
 
+        search_cls = current_circulation.loan_search_cls
+        search = search_cls()
+        search, _ = default_search_factory(self, search)
+
         # TODO validation
         buckets = get_loan_statistics(
+            search,
             group_by,
             metrics,
         )

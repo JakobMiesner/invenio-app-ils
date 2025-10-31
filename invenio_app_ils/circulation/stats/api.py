@@ -76,7 +76,7 @@ def _get_metric_field_name(metric):
     return f"{metric['aggregation']}_{metric['field']}"
 
 
-def get_loan_statistics(group_by, metrics):
+def get_loan_statistics(search, group_by, metrics):
     """Fetch loan statistics using existing facets system for filtering.
 
     Args:
@@ -100,7 +100,7 @@ def get_loan_statistics(group_by, metrics):
                 description="Each group_by item must be a dict with 'field' key"
             )
         if (
-            group.get(group["field"]) in _VALID_DATE_FIELDS
+            group.get("field") in _VALID_DATE_FIELDS
             and group.get("interval") not in _VALID_DATE_INTERVALS
         ):
             raise InvalidParameterError(
@@ -118,9 +118,6 @@ def get_loan_statistics(group_by, metrics):
             raise InvalidParameterError(
                 description=f"Invalid aggregation '{metric['aggregation']}'. Must be one of: {', '.join(_VALID_AGGREGATE_FUNCTION_TYPES)}"
             )
-
-    search_cls = current_circulation.loan_search_cls
-    search = search_cls()
 
     sources = []
     for group in group_by:
