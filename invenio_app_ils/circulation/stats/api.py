@@ -97,6 +97,18 @@ _VALID_DATE_FIELDS = {"start_date", "end_date"}
 _VALID_DATE_INTERVALS = {"1d", "1w", "1M", "1q", "1y"}
 
 
+def _get_metric_field_name(metric):
+    """Get the metric field name used in the aggregation results.
+
+    Args:
+        metric (dict): Metric dictionary with 'field' and 'aggregation' keys
+    Returns:
+        str: Metric field name in the format '<aggregation>_<field>'
+    """
+
+    return f"{metric['aggregation']}_{metric['field']}"
+
+
 def get_loan_statistics(group_by, metrics):
     """Fetch loan statistics using existing facets system for filtering.
 
@@ -174,10 +186,10 @@ def get_loan_statistics(group_by, metrics):
     composite_agg = dsl.A("composite", sources=sources, size=1000)
 
     for metric in metrics:
+        agg_name = _get_metric_field_name(metric)
+
         field_name = metric["field"]
         agg_type = metric["aggregation"]
-        agg_name = f"{agg_type}_{field_name}"
-
         field_config = _get_field_config(field_name)
         if agg_type in _OS_NATIVE_AGGREGATE_FUNCTION_TYPES:
             composite_agg = composite_agg.metric(
@@ -192,17 +204,6 @@ def get_loan_statistics(group_by, metrics):
 
     # Only retrieve aggregation results
     search = search[:0]
-
-    # TODO remove Debug the aggregation structure
-    if True:
-        import json
-
-        pth = "/tmp/opensearch_query.json"
-        print(f"Debugging OpenSearch query to {pth}")
-        with open(pth, "w") as f:
-            json.dump(search.to_dict(), f, indent=2)
-
-    # Execute the search
     result = search.execute()
 
     buckets = []
@@ -214,9 +215,7 @@ def get_loan_statistics(group_by, metrics):
             }
 
             for metric in metrics:
-                field_name = metric["field"]
-                agg_type = metric["aggregation"]
-                agg_name = f"{agg_type}_{field_name}"
+                agg_name = _get_metric_field_name(metric)
 
                 if hasattr(bucket, agg_name):
                     agg_result = getattr(bucket, agg_name)
