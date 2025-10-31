@@ -84,28 +84,32 @@ def loan_transition_event_builder(
     **kwargs
 ):
     """Build an event for loan creations."""
-    event_data = {
-        "timestamp": datetime.datetime.now().isoformat(),
-        "trigger": trigger,
-        "pid_value": loan["pid"],
-    }
+    event.update(
+        {
+            "timestamp": datetime.datetime.now().isoformat(),
+            "trigger": trigger,
+            "pid_value": loan["pid"],
+        }
+    )
 
     if trigger == "request":
+        # Store how many items were available during request.
+        # This information is requested by the loan indexer and added to the loan.
         document_pid = loan["document_pid"]
         document_class = current_app_ils.document_record_cls
         document = document_class.get_record_by_pid(document_pid)
         document_dict = document.replace_refs()
 
-        event_data.update(
+        event.update(
             {
                 "field": "available_items_during_request_count",
                 "value": document_dict["circulation"]["available_items_for_loan_count"],
             }
         )
     elif trigger == "extend":
+        # Extensions are aggregated by invenio-stats and no extra information is required
         pass
     else:
         return None
 
-    event.update(event_data)
     return event

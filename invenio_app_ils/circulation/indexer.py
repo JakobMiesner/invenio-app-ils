@@ -5,10 +5,7 @@
 # invenio-app-ils is free software; you can redistribute it and/or modify it
 # under the terms of the MIT License; see LICENSE file for more details.
 from invenio_search import current_search_client
-from invenio_stats.tasks import process_events
-from invenio_search.engine import search
 
-from invenio_stats.processors import EventsIndexer
 
 """Loan indexer APIs."""
 
@@ -105,27 +102,9 @@ def index_extra_fields_for_loan(loan_dict):
     loan_dict["can_circulate_items_count"] = can_circulate_items_count
 
 
-class LoansEventsIndexer(EventsIndexer):
-    def run(self):
-        """Process events queue and reindex affected loans."""
-        actions = [action for action in self.actionsiter()]
-        res = search.helpers.bulk(
-            self.client, self.actionsiter(), stats_only=True, chunk_size=50
-        )
-        wait_es_refresh(self.index)
+def index_stats_fields_for_loan(loan_dict):
+    """Indexer hook to modify the loan record dict before indexing"""
 
-        # Reindex loans that had events to ensure they contain the transition information
-        loan_pids = {action["pid_value"] for action in actions}
-        loan_indexer = current_circulation.loan_indexer()
-        loan_cls = current_circulation.loan_record_cls
-        for loan_pid in loan_pids:
-            loan = loan_cls.get_record_by_pid(loan_pid)
-            loan_indexer.index(loan)
-
-        return res
-
-
-def index_stat_fields_for_loan(loan_dict):
     stats = {}
 
     creation_date = datetime.fromisoformat(loan_dict["_created"]).date()
@@ -140,6 +119,7 @@ def index_stat_fields_for_loan(loan_dict):
         else None
     )
 
+    # Extra fields used by the histogram endpoint
     if start_date and end_date:
         loan_duration = (end_date - start_date).days
         stats["loan_duration"] = loan_duration
@@ -148,11 +128,10 @@ def index_stat_fields_for_loan(loan_dict):
         waiting_time = (start_date - creation_date).days
         stats["waiting_time"] = waiting_time if waiting_time >= 0 else None
 
-    # Document status during creation
+    # Document status during loan request
     stats_index_name = "events-stats-loan-transitions"
 
     if current_search_client.indices.exists(index=stats_index_name):
-
         loan_pid = loan_dict["pid"]
         search_body = {}
 
@@ -171,15 +150,15 @@ def index_stat_fields_for_loan(loan_dict):
             index=stats_index_name, body=search_body
         )
         hits = search_result["hits"]["hits"]
-        if len(hits) > 1:
-            raise ValueError(f"Multiple request transition events for loan {loan_pid}")
-        elif len(hits) == 1:
-
+        if len(hits) == 1:
             request_transition_event = hits[0]["_source"]
             available_items_during_request_count = request_transition_event["value"]
             stats["available_items_during_request"] = (
                 available_items_during_request_count > 0
             )
+        elif len(hits) > 1:
+            raise ValueError(f"Multiple request transition events for loan {loan_pid}")
 
-    loan_dict["extensions"] = {}
+    if not "extensions" in loan_dict:
+        loan_dict["extensions"] = {}
     loan_dict["extensions"]["stats"] = stats

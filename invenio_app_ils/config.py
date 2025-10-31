@@ -27,8 +27,6 @@ from invenio_stats.aggregations import StatAggregator
 from invenio_stats.processors import EventsIndexer
 from invenio_stats.queries import DateHistogramQuery, ESTermsQuery
 
-from invenio_app_ils.circulation.indexer import LoansEventsIndexer
-
 from invenio_app_ils.document_requests.indexer import DocumentRequestIndexer
 from invenio_app_ils.documents.indexer import DocumentIndexer
 from invenio_app_ils.eitems.indexer import EItemIndexer
@@ -45,7 +43,7 @@ from invenio_app_ils.locations.indexer import LocationIndexer
 from invenio_app_ils.patrons.indexer import PatronIndexer
 from invenio_app_ils.series.indexer import SeriesIndexer
 from invenio_app_ils.stats.event_builders import ils_record_changed_event_builder
-from invenio_app_ils.stats.processors import filter_extension_transitions
+from invenio_app_ils.stats.processors import filter_extend_transitions, LoansEventsIndexer
 from invenio_app_ils.vocabularies.indexer import VocabularyIndexer
 
 from .document_requests.api import (
@@ -996,11 +994,11 @@ STATS_EVENTS = {
             "suffix": "%Y",
         },
     },
-    # Those events are used to track loan state transitions
-    # Only the extensions will be aggregated and used in the intended way of invenio-stats.
-    # Other transitions, e.g. requests, are used to track additional information like
-    # the number of available items when a loan is requested.
-    # They are then later added to the loan index.
+    # The following events are used to track loan state transitions and store additional data.
+    # Only the "extend" transition will be aggregated and used in the way intended by invenio-stats.
+    # Other transitions, e.g. "request", are used to track additional information,
+    # e.g. the number of available items when a loan is requested.
+    # The loan indexer then later queries those events and adds the information to the loan index.
     "loan-transitions": {
         "signal": "invenio_circulation.signals.loan_state_changed_new",
         "templates": "invenio_app_ils.stats.templates.events.loan_transitions",
@@ -1086,7 +1084,7 @@ STATS_AGGREGATIONS = {
             copy_fields=dict(),
             metric_fields=dict(),
             # We only track extension transitions
-            query_modifiers=[],
+            query_modifiers=[filter_extend_transitions],
         ),
     ),
 }
