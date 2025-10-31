@@ -252,6 +252,17 @@ def test_loan_stats_document_availability_indexer(
     buckets = _query_loan_histogram(client, group_by)
     assert len(buckets) == 2
 
+    # There should be one loan that was requested when no item was available
+    # and one that was requested when an item was available
+    availability_counts = {
+        bucket["key"]["extensions.stats.available_items_during_request"]: bucket[
+            "doc_count"
+        ]
+        for bucket in buckets
+    }
+    assert availability_counts[True] == 1
+    assert availability_counts[False] == 1
+
 def test_loan_stats_indexed_fields(
     client,
     users,
