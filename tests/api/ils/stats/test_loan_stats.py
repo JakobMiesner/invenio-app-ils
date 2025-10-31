@@ -11,10 +11,12 @@
 import json
 
 from flask import url_for
+from copy import deepcopy
 
 from tests.api.ils.stats.helpers import (
     query_histogram,
     extract_buckets_from_histogram,
+    process_and_aggregate_stats,
 )
 from tests.helpers import user_login, user_logout
 
@@ -29,7 +31,7 @@ LOAN_HISTOGRAM_ENDPOINT = "invenio_app_ils_circulation.loan_histogram"
 HISTOGRAM_LOANS_DOCID = "docid-loan-histogram"
 
 
-def _query_loan_histogram(client, group_by, metrics, q):
+def _query_loan_histogram(client, group_by, metrics=[], q=""):
     """Query the loan histogram endpoint via the HTTP API."""
 
     # We have a certain document in the testdata that is assigned to all loans used for this test.
@@ -69,13 +71,6 @@ def _test_loan_aggregation(client, group_by, field, tests):
             )
 
 
-def test_loan_request_availability():
-    """Test that the availability of an item during loan request gets indexed to the loan."""
-
-    # maybe also test that the information does not get lost when the loan proceeds further down the transition chain (e.g. checking)
-    pass
-
-
 def test_loan_stats_histogram_single_group(
     client,
     users,
@@ -84,16 +79,12 @@ def test_loan_stats_histogram_single_group(
     """Test histogram with single field grouping."""
     user_login(client, "admin", users)
 
-    # Group by state only
     group_by = [{"field": "state"}]
-    metrics = []
-    q = ""
-    buckets = _query_loan_histogram(client, group_by, metrics, q)
+    buckets = _query_loan_histogram(client, group_by)
 
     # Should have 3 states: ITEM_ON_LOAN, ITEM_RETURNED, PENDING
     assert len(buckets) == 3
 
-    # Find each state bucket and verify counts
     state_counts = {bucket["key"]["state"]: bucket["doc_count"] for bucket in buckets}
     assert state_counts["ITEM_ON_LOAN"] == 1
     assert state_counts["ITEM_RETURNED"] == 2
@@ -109,17 +100,14 @@ def test_loan_stats_histogram_date_groups(
     user_login(client, "admin", users)
 
     group_by = [{"field": "start_date", "interval": "1M"}]
-    metrics = []
-    q = ""
+    buckets = _query_loan_histogram(client, group_by)
 
-    buckets = _query_loan_histogram(client, group_by, metrics, q)
-
+    # Should have 3 different date groups: 2024-01, 2024-07, 2025-07
     assert len(buckets) == 3
 
     date_counts = {
         bucket["key"]["start_date"]: bucket["doc_count"] for bucket in buckets
     }
-
     assert date_counts["2024-01-01"] == 1
     assert date_counts["2024-07-01"] == 1
     assert date_counts["2025-07-01"] == 2
@@ -130,7 +118,7 @@ def test_loan_stats_histogram_multiple_groups(
     users,
     testdata_loan_histogram,
 ):
-    """Test histogram with date field to group by."""
+    """Test histogram with multiple fields to group by."""
 
     user_login(client, "admin", users)
 
@@ -143,6 +131,7 @@ def test_loan_stats_histogram_multiple_groups(
 
     buckets = _query_loan_histogram(client, group_by, metrics, q)
 
+    # Should have 4 different (date,state) groups
     assert len(buckets) == 4
 
     date_counts = {
@@ -188,11 +177,63 @@ def test_loan_stats_histogram_search_query(
 
     buckets = _query_loan_histogram(client, group_by, metrics, q)
 
+    # Should have 2 states: ITEM_ON_LOAN, PENDING
     assert len(buckets) == 2
 
     state_counts = {bucket["key"]["state"]: bucket["doc_count"] for bucket in buckets}
     assert state_counts["ITEM_ON_LOAN"] == 1
     assert state_counts["PENDING"] == 1
+
+
+def test_loan_stats_document_availability_indexer(
+    client,
+    users,
+    json_headers,
+    testdata_loan_histogram,
+    loan_params,
+):
+    """Test that the availability of an item during loan request gets indexed to the loan."""
+
+    user_login(client, "admin", users)
+
+    def _request_loan():
+        url = url_for("invenio_app_ils_circulation.loan_request")
+
+        new_loan = deepcopy(loan_params)
+        new_loan["delivery"] = {"method": "PICKUP"}
+        res = client.post(url, headers=json_headers, data=json.dumps(new_loan))
+        assert res.status_code == 202
+        loan = res.get_json()["metadata"]
+        assert loan["state"] == "PENDING"
+        return loan
+
+    group_by = [{"field": "available_items_during_request_count"}]
+
+    # create loan while item is available
+    process_and_aggregate_stats()
+    buckets = _query_loan_histogram(client, group_by)
+    assert len(buckets) == 0
+
+    loan_pid = _request_loan()["pid"]
+    process_and_aggregate_stats()
+    buckets = _query_loan_histogram(client, group_by)
+    assert len(buckets) == 1
+
+    # maybe also test that the information does not get lost when the loan proceeds further down the transition chain (e.g. checking)
+    pass
+
+
+def test_loan_stats_indexed_fields(
+    client,
+    users,
+    testdata_loan_histogram,
+):
+    """Test that certain fields are indexed to the loan for stats purposes.
+
+    * loan_duration
+    * waiting_time gets indexed to the loan.
+    """
+    pass
 
 
 def test_loan_stats_permissions(client, users):
