@@ -88,11 +88,10 @@ def _get_field_config(field_name):
     if field_name in computed_fields:
         return {"script": computed_fields[field_name]}
     else:
-        # Assume it's an indexed field
         return {"field": field_name}
 
 
-def fetch_loan_statistics_with_facets(interval, field, request_args, metrics=None, group_by=None):
+def fetch_loan_statistics_with_facets(interval, histogram_date_field, request_args, metrics=None, group_by=None):
     """Fetch loan statistics using existing facets system for filtering.
 
     Args:
@@ -107,14 +106,12 @@ def fetch_loan_statistics_with_facets(interval, field, request_args, metrics=Non
     Returns:
         dict: OpenSearch aggregation results with multi-terms histogram and optional metrics
     """
-    # Validate interval
     valid_intervals = ["day", "week", "month", "year"]
     if interval not in valid_intervals:
         raise InvalidParameterError(
             description=f"Invalid interval. Must be one of: {', '.join(valid_intervals)}"
         )
 
-    # Validate metrics
     if metrics is None:
         metrics = []
     valid_aggregations = {"avg", "sum", "min", "max", "median"}
@@ -128,35 +125,19 @@ def fetch_loan_statistics_with_facets(interval, field, request_args, metrics=Non
                 description=f"Invalid aggregation '{metric['aggregation']}'. Must be one of: {', '.join(valid_aggregations)}"
             )
 
-    # Validate and clean group_by - exclude date fields since field parameter specifies the date dimension
     if group_by is None:
         group_by = []
 
     # Define valid date fields
     valid_date_fields = ["start_date", "end_date", "request_start_date", "request_expire_date"]
 
-    # Remove any date fields from group_by - they should only be specified via the field parameter
-    original_group_by = group_by[:]
-    group_by = [g for g in group_by if g not in valid_date_fields]
-
-    # Log if we filtered out date fields
-    removed_date_fields = [g for g in original_group_by if g in valid_date_fields]
-    if removed_date_fields:
-        print(f"Warning: Removed date fields from group_by: {', '.join(removed_date_fields)}. Use 'field' parameter to specify date dimension.")
-
-    # Validate field parameter - must be a valid date field
-    if field not in valid_date_fields:
+    if histogram_date_field not in valid_date_fields:
         raise InvalidParameterError(
             description=f"Field must be a valid date field. Valid options: {', '.join(valid_date_fields)}"
         )
 
-    # The date field comes from the field parameter
-    histogram_date_field = field
+    composite_group_by = [histogram_date_field] + group_by
 
-    # Create final group_by list: [field] + other_fields for composite aggregation
-    composite_group_by = [field] + group_by
-
-    # Map interval to OpenSearch date format for date truncation
     interval_formats = {
         "day": "yyyy-MM-dd",
         "week": "yyyy-MM-dd",  # OpenSearch will truncate to Monday
@@ -164,15 +145,11 @@ def fetch_loan_statistics_with_facets(interval, field, request_args, metrics=Non
         "year": "yyyy"
     }
 
-    # Map interval to OpenSearch calendar_interval for date_trunc script
-    interval_mapping = {"day": "1d", "week": "1w", "month": "1M", "year": "1y"}
 
     search_cls = current_circulation.loan_search_cls
     search = search_cls()
 
-    # Apply the existing facets using the standard facets factory
-    # This will automatically apply all the configured post_filters from circulation config
-    search_index = getattr(search, "_original_index", search._index)[0]
+    search_index = getattr(search, "_original_index")[0]
     search, urlkwargs = default_facets_factory(search, search_index)
 
     # Build composite aggregation if we have additional grouping fields beyond just the date
@@ -226,6 +203,7 @@ def fetch_loan_statistics_with_facets(interval, field, request_args, metrics=Non
 
     else:
         # Fallback to simple date histogram when only date field is specified
+        interval_mapping = {"day": "1d", "week": "1w", "month": "1M", "year": "1y"}
         date_histogram_agg = dsl.A(
             "date_histogram",
             field=histogram_date_field,
@@ -260,8 +238,7 @@ def fetch_loan_statistics_with_facets(interval, field, request_args, metrics=Non
     if True:
         query_dict = search.to_dict()
         print("=== DEBUG INFO ===")
-        print(f"Interval: {interval} -> {interval_mapping[interval]}")
-        print(f"Field: {field}")
+        print(f"Field: {histogram_date_field}")
         print(f"Histogram date field: {histogram_date_field}")
         print(f"Group by fields (categorical): {group_by}")
         print(f"Composite group by fields: {composite_group_by}")
