@@ -27,6 +27,8 @@ from invenio_stats.aggregations import StatAggregator
 from invenio_stats.processors import EventsIndexer
 from invenio_stats.queries import DateHistogramQuery, ESTermsQuery
 
+from invenio_app_ils.circulation.indexer import LoansEventsIndexer
+
 from invenio_app_ils.document_requests.indexer import DocumentRequestIndexer
 from invenio_app_ils.documents.indexer import DocumentIndexer
 from invenio_app_ils.eitems.indexer import EItemIndexer
@@ -1005,7 +1007,7 @@ STATS_EVENTS = {
         "event_builders": [
             "invenio_app_ils.stats.event_builders.loan_transition_event_builder",
         ],
-        "cls": EventsIndexer,
+        "cls": LoansEventsIndexer,
         "params": {
             "preprocessors": [
                 "invenio_app_ils.stats.processors.add_loan_transition_ids",

@@ -8,6 +8,8 @@ from invenio_search import current_search_client
 from invenio_stats.tasks import process_events
 from invenio_search.engine import search
 
+from invenio_stats.processors import EventsIndexer
+
 """Loan indexer APIs."""
 
 from datetime import datetime
@@ -103,6 +105,25 @@ def index_extra_fields_for_loan(loan_dict):
     loan_dict["can_circulate_items_count"] = can_circulate_items_count
 
 
+class LoansEventsIndexer(EventsIndexer):
+    def run(self):
+        """Process events queue and reindex affected loans."""
+        actions = [action for action in self.actionsiter()]
+        res = search.helpers.bulk(
+            self.client, self.actionsiter(), stats_only=True, chunk_size=50
+        )
+        wait_es_refresh(self.index)
+
+        # Reindex loans that had events to ensure they contain the transition information
+        loan_pids = {action["pid_value"] for action in actions}
+        loan_indexer = current_circulation.loan_indexer()
+        loan_cls = current_circulation.loan_record_cls
+        for loan_pid in loan_pids:
+            loan = loan_cls.get_record_by_pid(loan_pid)
+            loan_indexer.index(loan)
+
+        return res
+
 
 def index_stat_fields_for_loan(loan_dict):
     stats = {}
@@ -127,11 +148,8 @@ def index_stat_fields_for_loan(loan_dict):
         waiting_time = (start_date - creation_date).days
         stats["waiting_time"] = waiting_time if waiting_time >= 0 else None
 
-
     # Document status during creation
     stats_index_name = "events-stats-loan-transitions"
-    process_events(["loan-transitions"])
-    wait_es_refresh(stats_index_name)
 
     if current_search_client.indices.exists(index=stats_index_name):
 
@@ -159,7 +177,9 @@ def index_stat_fields_for_loan(loan_dict):
 
             request_transition_event = hits[0]["_source"]
             available_items_during_request_count = request_transition_event["value"]
-            stats["available_items_during_request"] = available_items_during_request_count > 0
+            stats["available_items_during_request"] = (
+                available_items_during_request_count > 0
+            )
 
     loan_dict["extensions"] = {}
     loan_dict["extensions"]["stats"] = stats
