@@ -66,9 +66,9 @@ def create_loan_histogram_view(blueprint, app):
 
     loan_stats_view_func = LoanHistogramResource.as_view(
         LoanHistogramResource.view_name,
-        serializers = loan_stats_serializers,
+        serializers=loan_stats_serializers,
         default_media_type=default_media_type,
-        ctx={}
+        ctx={},
     )
     blueprint.add_url_rule(
         "/circulation/loans/stats",
@@ -183,7 +183,7 @@ class LoanHistogramResource(IlsCirculationResource):
         try:
             parsed_args = schema.load(request.args.to_dict())
         except ValidationError as e:
-            raise InvalidParameterError(description=e.messages)
+            raise InvalidParameterError(description=e.messages) from e
 
         # Construct search to allow for filtering with the q parameter
         search_cls = current_circulation.loan_search_cls

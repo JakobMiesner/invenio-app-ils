@@ -58,7 +58,7 @@ def extract_buckets_from_stats_query(response):
     return buckets
 
 
-def query_histogram(client, url, group_by, metrics, q):
+def query_histogram(client, url, group_by, metrics=None, q=None):
     """Query a histogram endpoint via the HTTP API.
 
     :param client: Flask test client.
@@ -70,9 +70,11 @@ def query_histogram(client, url, group_by, metrics, q):
 
     params = {
         "group_by": json.dumps(group_by),
-        "metrics": json.dumps(metrics),
-        "q": q,
     }
+    if metrics:
+        params["metrics"] = json.dumps(metrics)
+    if q:
+        params["q"] = q
 
     response = client.get(
         url,

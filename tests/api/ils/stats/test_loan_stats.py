@@ -160,7 +160,7 @@ def test_loan_stats_histogram_metrics_aggregation(
     for group_key, expected_metrics in tests.items():
         for aggregation_type, expected_value in expected_metrics.items():
             assert (
-                histogram_metrics[group_key][f"{aggregation_type}__{field}"]
+                histogram_metrics[group_key]["metrics"][f"{aggregation_type}__{field}"]
                 == expected_value
             )
 
@@ -256,8 +256,8 @@ def test_loan_stats_histogram_group_by_document_availability(
         ]
         for bucket in buckets
     }
-    assert availability_counts[True] == 1
-    assert availability_counts[False] == 1
+    assert availability_counts["True"] == 1
+    assert availability_counts["False"] == 1
 
 
 def test_loan_stats_indexed_fields(
@@ -321,10 +321,10 @@ def test_loan_stats_indexed_fields(
 
     buckets = _query_loan_histogram(client, group_by, metrics, q)
     assert len(buckets) == 1
-    bucket = buckets[0]
+    metrics_bucket = buckets[0]["metrics"]
 
-    assert bucket["sum__extra_data.stats.waiting_time"] == expected_waiting_time_days
-    assert bucket["sum__extra_data.stats.loan_duration"] == expected_loan_duration_days
+    assert metrics_bucket["sum__extra_data.stats.waiting_time"] == expected_waiting_time_days
+    assert metrics_bucket["sum__extra_data.stats.loan_duration"] == expected_loan_duration_days
 
 
 def test_loan_stats_permissions(client, users):
@@ -364,47 +364,47 @@ def test_loan_stats_input_validation(client, users):
     # Attempt to use wrong aggregation type
     group_by = [{"field": "state"}]
     metrics = [{"field": "loan_duration", "aggregation": "script"}]
-    resp = query_histogram(client, url, group_by, metrics, q="")
+    resp = query_histogram(client, url, group_by, metrics)
     assert resp.status_code == 400
 
     # Attempt to pass a field with special characters as the metric field
     group_by = [{"field": "state"}]
     metrics = [{"field": "doc['loan_duration'].value", "aggregation": "avg"}]
-    resp = query_histogram(client, url, group_by, metrics, q="")
+    resp = query_histogram(client, url, group_by, metrics)
     assert resp.status_code == 400
 
     # Attempt to pass a field with special characters as the group by field
     group_by = [{"field": "doc['loan_duration'].value"}]
     metrics = []
-    resp = query_histogram(client, url, group_by, metrics, q="")
+    resp = query_histogram(client, url, group_by, metrics)
     assert resp.status_code == 400
 
     # Attempt to use an invalid date interval
     group_by = [{"field": "start_date", "interval": "1z"}]
     metrics = []
-    resp = query_histogram(client, url, group_by, metrics, q="")
+    resp = query_histogram(client, url, group_by, metrics)
     assert resp.status_code == 400
 
     # Attempt to use a date field without an interval
     group_by = [{"field": "start_date"}]
     metrics = []
-    resp = query_histogram(client, url, group_by, metrics, q="")
+    resp = query_histogram(client, url, group_by, metrics)
     assert resp.status_code == 400
 
     # Attempt to use a  non date field with an interval
     group_by = [{"field": "state", "interval": "1M"}]
     metrics = []
-    resp = query_histogram(client, url, group_by, metrics, q="")
+    resp = query_histogram(client, url, group_by, metrics)
     assert resp.status_code == 400
 
     # Missing group_by parameter
     group_by = None
     metrics = []
-    resp = query_histogram(client, url, group_by, metrics, q="")
+    resp = query_histogram(client, url, group_by, metrics)
     assert resp.status_code == 400
 
     # Empty group_by parameter
     group_by = []
     metrics = []
-    resp = query_histogram(client, url, group_by, metrics, q="")
+    resp = query_histogram(client, url, group_by, metrics)
     assert resp.status_code == 400

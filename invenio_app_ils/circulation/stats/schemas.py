@@ -87,7 +87,7 @@ class MetricItemSchema(Schema):
 class HistogramParamsSchema(Schema):
     """Schema for validating the query string parameters for the histogram endpoint"""
 
-    metrics = fields.List(fields.Nested(MetricItemSchema))
+    metrics = fields.List(fields.Nested(MetricItemSchema), required=False)
     group_by = fields.List(
         fields.Nested(GroupByItemSchema), required=True, validate=validate.Length(min=1)
     )
@@ -101,6 +101,10 @@ class HistogramParamsSchema(Schema):
     def parse_query_string(self, data, **kwargs):
         """Parse the metrics and group_by parameters from JSON strings."""
 
-        for key in ("metrics", "group_by"):
-            data[key] = json.loads(data.get(key))
+        try:
+            for key in ("metrics", "group_by"):
+                # default value as the field "metrics" is not required
+                data[key] = json.loads(data.get(key, "[]"))
+        except Exception as e:
+            raise ValidationError from e
         return data
