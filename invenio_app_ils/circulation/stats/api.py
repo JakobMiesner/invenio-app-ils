@@ -66,21 +66,21 @@ def _generate_metric_agg_field_name(metric):
     return f"{metric['aggregation']}__{metric['field']}"
 
 
-def get_loan_statistics(date_fields, search, group_by, metrics):
+def get_loan_statistics(date_fields, search, requested_group_by, requested_metrics):
     """Aggregate loan statistics for requested metrics.
 
     :param date_fields: List of fields that are date fields for the record type.
     :param search: The base search object to apply aggregations on
-    :param group_by: List of group dictionaries with 'field' and optional 'interval' keys.
+    :param requested_group_by: List of group dictionaries with 'field' and optional 'interval' keys.
         Example: [{"field": "start_date", "interval": "monthly"}, {"field": "state"}]
-    :param metrics: List of metric dictionaries with 'field' and 'aggregation' keys.
+    :param requested_metrics: List of metric dictionaries with 'field' and 'aggregation' keys.
         Example: [{"field": "loan_duration", "aggregation": "avg"}]
     :returns: OpenSearch aggregation results with multi-terms histogram and optional metrics
     """
 
     # Build composite aggregation
     sources = []
-    for grouping in group_by:
+    for grouping in requested_group_by:
         grouping_field = grouping["field"]
 
         if grouping_field in date_fields:
@@ -100,7 +100,7 @@ def get_loan_statistics(date_fields, search, group_by, metrics):
 
     composite_agg = dsl.A("composite", sources=sources, size=1000)
 
-    for metric in metrics:
+    for metric in requested_metrics:
         agg_name = _generate_metric_agg_field_name(metric)
 
         grouping_field = metric["field"]
@@ -125,12 +125,8 @@ def get_loan_statistics(date_fields, search, group_by, metrics):
     buckets = []
     if hasattr(result.aggregations, "loan_aggregations"):
         for bucket in result.aggregations.loan_aggregations.buckets:
-            bucket_data = {
-                "key": bucket.key.to_dict(),
-                "doc_count": bucket.doc_count,
-            }
-
-            for metric in metrics:
+            metrics_data = {}
+            for metric in requested_metrics:
                 agg_name = _generate_metric_agg_field_name(metric)
 
                 if hasattr(bucket, agg_name):
@@ -138,10 +134,16 @@ def get_loan_statistics(date_fields, search, group_by, metrics):
                     agg_type = metric["aggregation"]
 
                     if agg_type in _OS_NATIVE_AGGREGATE_FUNCTION_TYPES:
-                        bucket_data[agg_name] = agg_result.value
+                        metrics_data[agg_name] = agg_result.value
                     elif agg_type == "median":
                         median_value = agg_result.values.get("50.0")
-                        bucket_data[agg_name] = median_value
+                        metrics_data[agg_name] = median_value
+
+            bucket_data = {
+                "key": bucket.key.to_dict(),
+                "doc_count": bucket.doc_count,
+                "metrics": metrics_data,
+            }
 
             buckets.append(bucket_data)
 

@@ -11,6 +11,7 @@ from datetime import datetime
 
 from flask import Blueprint, current_app, jsonify, request
 from invenio_circulation.proxies import current_circulation
+from invenio_circulation.pidstore.pids import CIRCULATION_LOAN_PID_TYPE
 from invenio_pidstore import current_pidstore
 from invenio_records_rest.query import default_search_factory
 from invenio_records_rest.utils import obj_or_import_string
@@ -27,6 +28,7 @@ from invenio_app_ils.config import RECORDS_REST_MAX_RESULT_WINDOW
 from invenio_app_ils.documents.api import DOCUMENT_PID_FETCHER, DOCUMENT_PID_TYPE
 from invenio_app_ils.errors import InvalidParameterError
 from invenio_app_ils.permissions import need_permissions
+from invenio_app_ils.circulation.stats.serializers import loan_stats_response
 
 
 def create_most_loaned_documents_view(blueprint, app):
@@ -56,14 +58,21 @@ def create_most_loaned_documents_view(blueprint, app):
 
 def create_loan_histogram_view(blueprint, app):
     """Add url rule for loan histogram view."""
-    loan_stats = LoanHistogramResource.as_view(
+
+    endpoints = app.config.get("RECORDS_REST_ENDPOINTS")
+    document_endpoint = endpoints.get(CIRCULATION_LOAN_PID_TYPE)
+    default_media_type = document_endpoint.get("default_media_type")
+    loan_stats_serializers = {"application/json": loan_stats_response}
+
+    loan_stats_view_func = LoanHistogramResource.as_view(
         LoanHistogramResource.view_name,
-        serializers={},
-        ctx=dict(),
+        serializers = loan_stats_serializers,
+        default_media_type=default_media_type,
+        ctx={}
     )
     blueprint.add_url_rule(
-        "/circulation/stats/loans",
-        view_func=loan_stats,
+        "/circulation/loans/stats",
+        view_func=loan_stats_view_func,
         methods=["GET"],
     )
 
@@ -192,4 +201,4 @@ class LoanHistogramResource(IlsCirculationResource):
             "buckets": aggregation_buckets,
         }
 
-        return jsonify(response), 200
+        return response, 200
