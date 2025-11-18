@@ -69,8 +69,7 @@ class LoansEventsIndexer(EventsIndexer):
             loan PID and how many items were available at the time of the request.
             When the event is indexed with this class, it is moved from the queue into
             the events index. Afterwards, the loan is reindexed and, during this
-            process, the loan indexer requests the state of the document during request
-            from the events index.
+            process, the loan indexer gets the state of the document from the events index.
         """
 
         # Collect all loan events that occurred from the queue and index them

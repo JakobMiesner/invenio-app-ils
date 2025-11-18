@@ -69,6 +69,7 @@ def _generate_metric_agg_field_name(metric):
 def get_loan_statistics(date_fields, search, group_by, metrics):
     """Aggregate loan statistics for requested metrics.
 
+    :param date_fields: List of fields that are date fields for the record type.
     :param search: The base search object to apply aggregations on
     :param group_by: List of group dictionaries with 'field' and optional 'interval' keys.
         Example: [{"field": "start_date", "interval": "monthly"}, {"field": "state"}]

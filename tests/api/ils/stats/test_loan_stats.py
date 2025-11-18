@@ -215,7 +215,7 @@ def test_loan_stats_histogram_group_by_document_availability(
         loan = res.get_json()["metadata"]
         assert loan["state"] == "PENDING"
 
-    group_by = [{"field": "extensions.stats.available_items_during_request"}]
+    group_by = [{"field": "extra_data.stats.available_items_during_request"}]
 
     # There should be no loans that have the field available_items_during_request indexed on them
     process_and_aggregate_stats()
@@ -251,7 +251,7 @@ def test_loan_stats_histogram_group_by_document_availability(
     # There should be one loan that was requested when no item was available
     # and one that was requested when an item was available
     availability_counts = {
-        bucket["key"]["extensions.stats.available_items_during_request"]: bucket[
+        bucket["key"]["extra_data.stats.available_items_during_request"]: bucket[
             "doc_count"
         ]
         for bucket in buckets
@@ -306,7 +306,7 @@ def test_loan_stats_indexed_fields(
     hits = [hit for hit in loan_search_cls().filter("term", pid=loan_pid).scan()]
     assert len(hits) == 1
 
-    stats = hits[0]["extensions"]["stats"]
+    stats = hits[0]["extra_data"]["stats"]
     assert stats["waiting_time"] == expected_waiting_time_days
     assert stats["loan_duration"] == expected_loan_duration_days
 
@@ -314,8 +314,8 @@ def test_loan_stats_indexed_fields(
     user_login(client, "admin", users)
     group_by = [{"field": "state"}]
     metrics = [
-        {"field": "extensions.stats.waiting_time", "aggregation": "sum"},
-        {"field": "extensions.stats.loan_duration", "aggregation": "sum"},
+        {"field": "extra_data.stats.waiting_time", "aggregation": "sum"},
+        {"field": "extra_data.stats.loan_duration", "aggregation": "sum"},
     ]
     q = f"pid:{loan_pid}"
 
@@ -323,8 +323,8 @@ def test_loan_stats_indexed_fields(
     assert len(buckets) == 1
     bucket = buckets[0]
 
-    assert bucket["sum__extensions.stats.waiting_time"] == expected_waiting_time_days
-    assert bucket["sum__extensions.stats.loan_duration"] == expected_loan_duration_days
+    assert bucket["sum__extra_data.stats.waiting_time"] == expected_waiting_time_days
+    assert bucket["sum__extra_data.stats.loan_duration"] == expected_loan_duration_days
 
 
 def test_loan_stats_permissions(client, users):

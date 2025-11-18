@@ -192,4 +192,4 @@ class LoanHistogramResource(IlsCirculationResource):
             "buckets": aggregation_buckets,
         }
 
-        return jsonify(response)
+        return jsonify(response), 200

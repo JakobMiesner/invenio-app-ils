@@ -102,10 +102,15 @@ def loan_transition_event_builder(
         document = document_class.get_record_by_pid(document_pid)
         document_dict = document.replace_refs()
 
+        available_items_during_request_count = document_dict["circulation"][
+            "available_items_for_loan_count"
+        ]
+
         event.update(
             {
-                "field": "available_items_during_request_count",
-                "value": document_dict["circulation"]["available_items_for_loan_count"],
+                "extra_data": {
+                    "available_items_during_request_count": available_items_during_request_count
+                },
             }
         )
     elif trigger == "extend":

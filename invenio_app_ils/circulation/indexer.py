@@ -137,7 +137,7 @@ def index_stats_fields_for_loan(loan_dict):
             "query": {
                 "bool": {
                     "must": [
-                        {"term": {"field": "available_items_during_request_count"}},
+                        {"term": {"trigger": "request"}},
                         {"term": {"pid_value": loan_pid}},
                     ],
                 }
@@ -150,7 +150,9 @@ def index_stats_fields_for_loan(loan_dict):
         hits = search_result["hits"]["hits"]
         if len(hits) == 1:
             request_transition_event = hits[0]["_source"]
-            available_items_during_request_count = request_transition_event["value"]
+            available_items_during_request_count = request_transition_event[
+                "extra_data"
+            ]["available_items_during_request_count"]
             stats["available_items_during_request"] = (
                 available_items_during_request_count > 0
             )
@@ -160,6 +162,6 @@ def index_stats_fields_for_loan(loan_dict):
                 "Expected zero or one."
             )
 
-    if not "extensions" in loan_dict:
-        loan_dict["extensions"] = {}
-    loan_dict["extensions"]["stats"] = stats
+    if not "extra_data" in loan_dict:
+        loan_dict["extra_data"] = {}
+    loan_dict["extra_data"]["stats"] = stats
