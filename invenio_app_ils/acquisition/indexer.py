@@ -12,16 +12,22 @@ from datetime import datetime
 from invenio_indexer.api import RecordIndexer
 from invenio_search import current_search_client
 
+from invenio_app_ils.acquisition.api import ORDER_PID_TYPE
 from invenio_app_ils.document_requests.api import DOCUMENT_REQUEST_PID_TYPE
+from invenio_app_ils.proxies import current_app_ils
 
 
 class OrderIndexer(RecordIndexer):
-    """Indexer class for Order record."""
+    """Indexer class for Order record.
+
+    Extends RecordIndexer to use custom indexing hooks for orders.
+    The indexing hooks add computed statistics fields during indexing.
+    """
 
 
 def index_stats_fields_for_order(order_dict):
     """Indexer hook to modify the order record dict before indexing.
-    
+
     Adds statistics fields:
     - waiting_time: Received status time - Related Literature Request creation time (if any)
     - ordering_time: Received status time - Purchase Order creation time
@@ -44,12 +50,11 @@ def index_stats_fields_for_order(order_dict):
         
         # Find related document request (literature request) if any
         # The document request has physical_item_provider.pid = order_pid
+        # Note: This search operation during indexing may impact performance for large datasets.
+        # Consider caching or storing the relationship directly if this becomes a bottleneck.
         order_pid = order_dict.get("pid")
         if order_pid:
             # Search for document requests that reference this order
-            from invenio_app_ils.acquisition.api import ORDER_PID_TYPE
-            from invenio_app_ils.proxies import current_app_ils
-            
             doc_req_search_cls = current_app_ils.document_request_search_cls
             search_body = {
                 "query": {
