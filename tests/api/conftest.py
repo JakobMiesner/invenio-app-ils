@@ -202,6 +202,23 @@ def testdata_loan_histogram(db, testdata):
 
 
 @pytest.fixture()
+def testdata_order_histogram(db, testdata):
+    """Create, index and return test data for orders histogram."""
+    orders_histogram = load_json_from_datadir("acq_orders_histogram.json")
+    recs = _create_records(db, orders_histogram, Order, ORDER_PID_TYPE)
+
+    ri = RecordIndexer()
+    for rec in recs:
+        ri.index(rec)
+
+    current_search.flush_and_refresh(index="acq_orders")
+
+    testdata["orders_histogram"] = orders_histogram
+
+    return testdata
+
+
+@pytest.fixture()
 def item_record(app):
     """Fixture to return an Item payload."""
     return {
