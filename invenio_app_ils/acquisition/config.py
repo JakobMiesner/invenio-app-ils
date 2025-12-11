@@ -6,7 +6,6 @@
 # under the terms of the MIT License; see LICENSE file for more details.
 
 """Configuration for Invenio ILS acquisition module."""
-from invenio_indexer.api import RecordIndexer
 from invenio_records_rest.facets import terms_filter
 
 from invenio_app_ils.config import RECORDS_REST_MAX_RESULT_WINDOW
@@ -17,6 +16,7 @@ from invenio_app_ils.permissions import (
 )
 
 from .api import ORDER_PID_FETCHER, ORDER_PID_MINTER, ORDER_PID_TYPE, Order
+from .indexer import OrderIndexer
 from .search import OrderSearch
 
 _ORDER_CONVERTER = 'pid(acqoid, record_class="invenio_app_ils.acquisition.api:Order")'
@@ -28,7 +28,7 @@ RECORDS_REST_ENDPOINTS = dict(
         pid_fetcher=ORDER_PID_FETCHER,
         search_class=OrderSearch,
         record_class=Order,
-        indexer_class=RecordIndexer,
+        indexer_class=OrderIndexer,
         record_loaders={
             "application/json": "invenio_app_ils.acquisition.loaders:order_loader"
         },

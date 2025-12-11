@@ -66,16 +66,21 @@ def _generate_metric_agg_field_name(metric):
     return f"{metric['aggregation']}__{metric['field']}"
 
 
-def get_loan_statistics(date_fields, search, requested_group_by, requested_metrics):
-    """Aggregate loan statistics for requested metrics.
+def get_record_statistics(
+    date_fields, search, requested_group_by, requested_metrics, aggregation_name="record_aggregations"
+):
+    """Aggregate record statistics for requested metrics.
 
     :param date_fields: List of date fields for the record type.
         Date fields require different handling when using them to group by.
-    :param search: The base search object to apply aggregations on
+    :param search: The base search object to apply aggregations on.
     :param requested_group_by: List of group dictionaries with 'field' and optional 'interval' keys.
         Example: [{"field": "start_date", "interval": "monthly"}, {"field": "state"}]
     :param requested_metrics: List of metric dictionaries with 'field' and 'aggregation' keys.
         Example: [{"field": "loan_duration", "aggregation": "avg"}]
+    :param aggregation_name: The name to use for the aggregation bucket in OpenSearch.
+        Different record types should use different names to avoid conflicts.
+        Default: "record_aggregations"
     :returns: OpenSearch aggregation results with multi-terms histogram and optional metrics
     """
 
@@ -116,7 +121,7 @@ def get_loan_statistics(date_fields, search, requested_group_by, requested_metri
                 agg_name, dsl.A("percentiles", percents=[50], **field_config)
             )
 
-    search.aggs.bucket("loan_aggregations", composite_agg)
+    search.aggs.bucket(aggregation_name, composite_agg)
 
     # Only retrieve aggregation results
     search = search[:0]
@@ -124,8 +129,8 @@ def get_loan_statistics(date_fields, search, requested_group_by, requested_metri
 
     # Parse aggregation results
     buckets = []
-    if hasattr(result.aggregations, "loan_aggregations"):
-        for bucket in result.aggregations.loan_aggregations.buckets:
+    if hasattr(result.aggregations, aggregation_name):
+        for bucket in getattr(result.aggregations, aggregation_name).buckets:
             metrics_data = {}
             for metric in requested_metrics:
                 agg_name = _generate_metric_agg_field_name(metric)
@@ -149,3 +154,19 @@ def get_loan_statistics(date_fields, search, requested_group_by, requested_metri
             buckets.append(bucket_data)
 
     return buckets
+
+
+def get_loan_statistics(date_fields, search, requested_group_by, requested_metrics):
+    """Aggregate loan statistics for requested metrics.
+
+    This is a wrapper around get_record_statistics for backwards compatibility.
+
+    :param date_fields: List of date fields for the record type.
+    :param search: The base search object to apply aggregations on
+    :param requested_group_by: List of group dictionaries with 'field' and optional 'interval' keys.
+    :param requested_metrics: List of metric dictionaries with 'field' and 'aggregation' keys.
+    :returns: OpenSearch aggregation results with multi-terms histogram and optional metrics
+    """
+    return get_record_statistics(
+        date_fields, search, requested_group_by, requested_metrics, "loan_aggregations"
+    )

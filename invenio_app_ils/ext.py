@@ -19,6 +19,7 @@ from invenio_app_ils.records.metadata_extensions import (
     add_es_metadata_extensions,
 )
 
+from .acquisition.indexer import index_stats_fields_for_order
 from .circulation import config as circulation_config
 from .circulation.indexer import (
     index_extra_fields_for_loan,
@@ -224,6 +225,7 @@ class InvenioAppIls(object):
             self.init_app(app)
             self.init_metadata_extensions(app)
             self.init_loan_indexer_hook(app)
+            self.init_order_indexer_hook(app)
 
     def init_app(self, app):
         """Flask application initialization."""
@@ -276,6 +278,15 @@ class InvenioAppIls(object):
             sender=app,
             weak=False,
             index="{0}s-{0}-v1.0.0".format("loan"),
+        )
+
+    def init_order_indexer_hook(self, app):
+        """Custom order indexer hook init."""
+        before_record_index.dynamic_connect(
+            before_order_index_hook,
+            sender=app,
+            weak=False,
+            index="acq_orders",
         )
 
     def update_config_records_rest(self, app):
@@ -331,3 +342,15 @@ def before_loan_index_hook(sender, json=None, record=None, index=None, **kwargs)
     """
     index_extra_fields_for_loan(json)
     index_stats_fields_for_loan(json)
+
+
+def before_order_index_hook(sender, json=None, record=None, index=None, **kwargs):
+    """Hook to transform order record before ES indexing.
+
+    :param sender: The entity sending the signal.
+    :param json: The dumped Record dict which will be indexed.
+    :param record: The corresponding Record object.
+    :param index: The index in which the json will be indexed.
+    :param kwargs: Any other parameters.
+    """
+    index_stats_fields_for_order(json)
