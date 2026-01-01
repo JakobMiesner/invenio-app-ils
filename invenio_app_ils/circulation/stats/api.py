@@ -73,12 +73,14 @@ def get_record_statistics(
 
     :param date_fields: List of date fields for the record type.
         Date fields require different handling when using them to group by.
-    :param search: The base search object to apply aggregations on
+    :param search: The base search object to apply aggregations on.
     :param requested_group_by: List of group dictionaries with 'field' and optional 'interval' keys.
         Example: [{"field": "start_date", "interval": "monthly"}, {"field": "state"}]
     :param requested_metrics: List of metric dictionaries with 'field' and 'aggregation' keys.
         Example: [{"field": "loan_duration", "aggregation": "avg"}]
-    :param aggregation_name: The name to use for the aggregation bucket (default: "record_aggregations")
+    :param aggregation_name: The name to use for the aggregation bucket in OpenSearch.
+        Different record types should use different names to avoid conflicts.
+        Default: "record_aggregations"
     :returns: OpenSearch aggregation results with multi-terms histogram and optional metrics
     """
 
