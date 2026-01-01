@@ -69,6 +69,7 @@ class InvenioIlsAcquisition(object):
         """Flask application initialization."""
         self.init_config(app)
         app.extensions["invenio-ils-acq"] = _InvenioIlsAcquisitionState(app)
+        self.register_blueprints(app)
 
     def init_config(self, app):
         """Initialize configuration."""
@@ -87,3 +88,12 @@ class InvenioIlsAcquisition(object):
         for k in dir(config):
             if k.startswith("ILS_ACQ_"):
                 app.config.setdefault(k, getattr(config, k))
+
+    def register_blueprints(self, app):
+        """Register blueprints."""
+        from invenio_app_ils.acquisition.stats.views import (
+            create_acquisition_stats_blueprint,
+        )
+
+        blueprint = create_acquisition_stats_blueprint(app)
+        app.register_blueprint(blueprint)
